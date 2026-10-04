@@ -11,3 +11,4 @@ credentials.json
 /video/*
 /old_models
 /exiftool-13.40_64
+venv/
