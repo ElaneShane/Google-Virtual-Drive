@@ -134,12 +134,19 @@ def get_detection_depth_and_heading(model, src, boxCoords, heading, fov):
     newBearing = sign_bearing(heading, boxX, depth.size(1), fov)
     return (avg_depth.item(), newBearing)
 
+# purpose: given a box, this will zoom in and read the actaul text and figure out exactly what kinds of specific sign the object detected is
+''' additions:
+    - OCR can fail, and in this specifiy signs will return "" so we need to add a check for this
+    so the correctly identified sign is not overwritten
+'''
 
 def ocr(boxCoords, signName, src, crop_path, ocr, ocr_candidate_signs):
+    # first we need to crop the the sign from the frame
     x1, y1, x2, y2 = boxCoords
     crop_img = cv2.imread(src)[int(y1):int(y2), int(x1):int(x2)]
     # Save cropped image
     cv2.imwrite(crop_path, crop_img)
+    # this is where we hand over the crop to paddleOCR and have it attempt to read the text
     text_prediction = ocr.predict(crop_path)
     words = []
     # only one result
@@ -148,12 +155,10 @@ def ocr(boxCoords, signName, src, crop_path, ocr, ocr_candidate_signs):
         with open("images/temp/jsons/sign_name_data.json", 'r', encoding='cp850') as f:
             j = json.load(f)
             # it may be worth pairing words with their confidence level
-            words = j['rec_texts']
-    lowest_cer, cers = specifySigns(signName, words, ocr_candidate_signs)
-    # os.remove("images/temp/jsons/sign_name_data.json")
-    # os.remove(crop_path)
-    
-    return lowest_cer
+            words = j['rec_texts'] # all the successful reads together
+    best_match, cers = specifySigns(signName, words, ocr_candidate_signs)
+    # If OCR found nothing or nothing matched, keep the detector's label
+    return best_match if best_match else signName
 
 def load_excel():
     # Define the scope of API
@@ -172,23 +177,27 @@ def load_excel():
     return sheet.get_all_records() # return all unique signs in the Google sheet
 
 # have a list of ocr candidate
+'''
+purpose:
+    - given a list of words from OCR, figure out which offical sign it most closely matches from the catalog
+
+
+additions:
+    - currently the lowest_cer becomes "" if the first option the checks happens to be empty or broken
+'''
 def specifySigns(baseSign, words, ocr_candidate_signs):
-    cer = CharErrorRate()
+    cer = CharErrorRate() # CER --> lower the CER the closer two words are
     cers = {}
     if (len(words) == 0): return "", {}
-    prediction = " ".join(words).capitalize()
-    lowest_cer = ""
+    prediction = " ".join(words).capitalize() # turn list into one string
     # for each sign type
     for ocr_candidate_sign in ocr_candidate_signs:
         if (ocr_candidate_sign["Bounding box name"] == baseSign):
             ocr_desc = " ".join(ocr_candidate_sign["OCR Desc"].split('\n')).capitalize()
             # calculate CER (without normalizing to len(ocr_desc))
-            cer_val = cer(prediction, ocr_desc).item()
-            if (len(cers) == 0 or (lowest_cer != "" and cer_val < cers[lowest_cer])):
-                lowest_cer = ocr_desc
-            cers[ocr_desc] = cer_val
-
-    return lowest_cer, cers
+            cers[ocr_desc] = cer(prediction, ocr_desc).item()
+    best_match = min(cers, key=cers.get) if cers else ""
+    return best_match, cers
 
 def is_ocr_canditate(unique_sign):
     return unique_sign["OCR candidate?"] == "y"

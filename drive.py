@@ -77,7 +77,7 @@ def csv_drive(filename, API_KEY, fov = 90, pitchAngle=0, datafile = None, ocr_ca
 
 
 
-
+# google street view 
 def drive_route(origin, destination, API_KEY, minStep = 20, fov = 90, pitchAngle = 10, datafile = None, ocr_candidate_signs = []):
 
     if(datafile != None):
@@ -167,7 +167,7 @@ def drive_route(origin, destination, API_KEY, minStep = 20, fov = 90, pitchAngle
 
 
 
-
+# physical drive with a GoPro camera
 def drive_gopro(input_mp4, interval, datafile, ocr_candidate_signs = []):
     #prepare images folder
     print("Preparing Directories")
