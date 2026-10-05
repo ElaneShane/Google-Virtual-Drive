@@ -143,16 +143,26 @@ def get_detection_depth_and_heading(model, src, boxCoords, heading, fov):
 def ocr(boxCoords, signName, src, crop_path, ocr, ocr_candidate_signs):
     # first we need to crop the the sign from the frame
     x1, y1, x2, y2 = boxCoords
-    crop_img = cv2.imread(src)[int(y1):int(y2), int(x1):int(x2)]
-    # Save cropped image
-    cv2.imwrite(crop_path, crop_img)
+    # create the folder to save all images
+    os.makedirs(os.path.dirname(crop_path) or ".", exist_ok=True)
+    os.makedirs("images/temp/jsons", exist_ok=True)
+
+    # crop the image and save it to the path
+    full_img = cv2.imread(src)
+    if full_img is None:
+        raise FileNotFoundError(f"OCR could not read image: {src}")
+    crop_img = full_img[int(y1):int(y2), int(x1):int(x2)]
+    if not cv2.imwrite(crop_path, crop_img):
+        raise IOError(f"OCR could not write crop: {crop_path}")
+    
+    
     # this is where we hand over the crop to paddleOCR and have it attempt to read the text
     text_prediction = ocr.predict(crop_path)
     words = []
     # only one result
     for res in text_prediction: 
         res.save_to_json("images/temp/jsons/sign_name_data.json")
-        with open("images/temp/jsons/sign_name_data.json", 'r', encoding='cp850') as f:
+        with open("images/temp/jsons/sign_name_data.json", 'r', encoding='utf-8') as f:
             j = json.load(f)
             # it may be worth pairing words with their confidence level
             words = j['rec_texts'] # all the successful reads together

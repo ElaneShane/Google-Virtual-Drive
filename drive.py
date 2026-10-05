@@ -194,21 +194,27 @@ def drive_gopro(input_mp4, interval, datafile, ocr_candidate_signs = []):
     print("Analyzing Frames")
     print(f"OCR signs are: {ocr_candidate_signs}")
     for (framesrc, lat, log, fov) in frames:
-        fov= float(fov)
+        fov = float(fov)
         lat = float(lat)
         log = float(log)
         #if not the first picture reset bearing using previous and current location
         heading, previousLocation = update_heading(heading, previousLocation, lat, log) # does first frame checking here
-        #Sign Detection starts here, may need to fix pathing name
+        """
+        new crop handle is in 3 parts:
+        1. strip the folders so we have frame___.jpg
+        2. strip the extension so its just frame___
+        3. add model name and box{box_i} to the end so we have frame___model_box{box_i}.jpg
+        """
         for model in os.listdir(os.path.join(os.getcwd(), "models")):
             found = detect_and_store(framesrc, f"models/{model}")
-            if(datafile != None):   
-                for sign, conf, shape in found:
+            if(datafile != None):
+                for box_i, (sign, conf, shape) in enumerate(found):
                     depth, newBearing = get_detection_depth_and_heading(depthModel, framesrc, shape, heading, fov)
                     sign_lat, sign_lon = adjustCoords(lat, log, newBearing, depth)
                     print(f"Adding {sign} at ({sign_lat}, {sign_lon}) to {datafile} table!")
                     if sign in ocrSigns:
+                        crop_name = f"{os.path.splitext(os.path.basename(framesrc))[0]}_{os.path.splitext(model)[0]}_box{box_i}.jpg"
                         sign = ocr(shape, sign, framesrc,
-                                f"images/temp/cropped/crop_{framesrc}", ocrModel, ocr_candidate_signs)
+                                   os.path.join("images/temp/cropped", crop_name), ocrModel, ocr_candidate_signs)
                     print(f"The new sign after OCR is {sign}!")
                     addToGISFormatTable(datafile, sign, sign_lat, sign_lon, newBearing)
