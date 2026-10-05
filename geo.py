@@ -62,3 +62,27 @@ def calculate_bearing(lat1, lon1, lat2, lon2):
     bearing_deg_corrected = (bearing_deg + 360) % 360  # Fix negative bearings
     
     return bearing_deg_corrected
+
+"""
+GPS accuracy range: 3 to 10 meters; while the truck is moving having some kind of buffer for the GPS will prevent jitter and allow for more accurate sign placement. 
+current buffer: 3 meters
+"""
+
+# gets how far point B is from Point A in meters
+def distance_m(lat1, lon1, lat2, lon2):
+    _, _, d = Geod(ellps="WGS84").inv(lon1, lat1, lon2, lat2) # inverse geodetic problem
+    return d
+
+# uses a ref point (last known good GPS location where heading was sucessfully calculated)
+def update_heading(heading, ref, lat, lon, min_move_m=3.0):
+    """Return (heading, ref). Heading only changes after moving >= min_move_m from ref."""
+    if ref is None: # then this is the first frame
+        return heading, (lat, lon)
+
+    # if ditance is less than 3 meters then we assume that the camera has stoped moving or is moving too slow 
+    # so it returns the old heading and the old reference point and we ignore this frame
+    if distance_m(ref[0], ref[1], lat, lon) < min_move_m:
+        return heading, ref
+    # else, if the truck has moved more than 3 mteres fromthe ref point, then we can trust the movement for GPS
+    # so we calculate the new heading and return it along with the new reference point for the next cycle
+    return calculate_bearing(ref[0], ref[1], lat, lon), (lat, lon)

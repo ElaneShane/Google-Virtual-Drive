@@ -1,5 +1,5 @@
 import pytest
-from geo import sign_bearing, adjustCoords, calculate_bearing
+from geo import sign_bearing, adjustCoords, calculate_bearing, update_heading
 
 # --- sign_bearing: car faces west (270), 1920 px wide, 90 deg horizontal FOV ---
 def test_centered_sign_is_straight_ahead():
@@ -37,3 +37,22 @@ def test_west_facing_sign_lands_west():
     lat, lon = adjustCoords(34.0, -118.0, 270, 20)
     assert lon < -118.0
     assert lat == pytest.approx(34.0, abs=1e-4)
+
+#  GPS tests
+def test_first_frame_keeps_initial_heading():
+    h, ref = update_heading(123, None, 34.0, -118.0)
+    assert h == 123 and ref == (34.0, -118.0)
+
+def test_stopped_truck_keeps_heading():
+    h, ref = update_heading(270, (34.0, -118.0), 34.00001, -118.0)   # ~1 m
+    assert h == 270 and ref == (34.0, -118.0)
+
+def test_moving_truck_updates_heading():
+    h, ref = update_heading(270, (34.0, -118.0), 34.0, -117.999)     # ~90 m east
+    assert h == pytest.approx(90, abs=0.5)
+    assert ref == (34.0, -117.999)
+
+def test_slow_creep_eventually_updates():
+    h, ref = update_heading(0, (34.0, -118.0), 34.00001, -118.0)     # 1 m: ignored
+    h, ref = update_heading(h, ref, 34.00004, -118.0)                # ~4.4 m from ref: accepted
+    assert ref == (34.00004, -118.0)

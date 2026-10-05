@@ -7,7 +7,7 @@ import json
 from transformers import pipeline
 from helper import *
 from paddleocr import PaddleOCR
-
+from geo import update_heading
 ocrSigns = ["Tow Away Signs Letters", "Hourly Parking Sign"]
 
 
@@ -189,8 +189,7 @@ def drive_gopro(input_mp4, interval, datafile, ocr_candidate_signs = []):
     frames = GoProFrames(input_mp4, outputFolder, interval)
     #set initial heading from location 1 to 2
     heading = calculate_bearing(float(frames[0][1]), float(frames[0][2]), float(frames[1][1]), float(frames[1][2]))
-    previousLocation = ()
-    firstFrame = True
+    previousLocation = None
 
     print("Analyzing Frames")
     print(f"OCR signs are: {ocr_candidate_signs}")
@@ -199,8 +198,7 @@ def drive_gopro(input_mp4, interval, datafile, ocr_candidate_signs = []):
         lat = float(lat)
         log = float(log)
         #if not the first picture reset bearing using previous and current location
-        if not firstFrame:
-            heading = calculate_bearing(previousLocation[0], previousLocation[1], lat, log)
+        heading, previousLocation = update_heading(heading, previousLocation, lat, log) # does first frame checking here
         #Sign Detection starts here, may need to fix pathing name
         for model in os.listdir(os.path.join(os.getcwd(), "models")):
             found = detect_and_store(framesrc, f"models/{model}")
@@ -214,4 +212,3 @@ def drive_gopro(input_mp4, interval, datafile, ocr_candidate_signs = []):
                                 f"images/temp/cropped/crop_{framesrc}", ocrModel, ocr_candidate_signs)
                     print(f"The new sign after OCR is {sign}!")
                     addToGISFormatTable(datafile, sign, sign_lat, sign_lon, newBearing)
-        previousLocation = (lat, log)
