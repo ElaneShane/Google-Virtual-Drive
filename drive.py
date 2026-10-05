@@ -63,12 +63,12 @@ def csv_drive(filename, API_KEY, fov = 90, pitchAngle=0, datafile = None, ocr_ca
                     if(datafile != None):   
                         for sign, conf, shape in found:
                             strippedurl = f"https://maps.googleapis.com/maps/api/streetview?size={imageSize}&location={locationStr}&fov={fov}&pitch={pitchAngle}&key=#####&heading={fov*headingMult}&scale=2&radius=10&source=outdoor"
-                            depth, newHeading = get_detection_depth_and_heading(depthModel, imagePath, shape, fov*headingMult, fov)
-                            lat, lon = adjustCoords(lat, log, newHeading, depth)
+                            depth, newBearing = get_detection_depth_and_heading(depthModel, imagePath, shape, fov*headingMult, fov)
+                            sign_lat, sign_lon = adjustCoords(lat, log, newBearing, depth)
                             if sign in ocrSigns:
                                 sign = ocr(shape, sign, f"images/raw/streetview_frame_{i}_heading_{fov*headingMult}.jpg",
                                         f"images/temp/cropped/crop_frame_{i}_heading_{fov*headingMult}_sign_{sign}.jpg", ocrModel, ocr_candidate_signs)
-                            addToGISFormatTable(datafile, sign, lat, lon, newHeading)
+                            addToGISFormatTable(datafile, sign, sign_lat, sign_lon, newBearing)
             except Exception as e:
                 print(e)
         i+=1
@@ -152,12 +152,12 @@ def drive_route(origin, destination, API_KEY, minStep = 20, fov = 90, pitchAngle
                     if(datafile != None):   
                         for sign, conf, shape in found:
                             strippedurl = f"https://maps.googleapis.com/maps/api/streetview?size={imageSize}&location={locationStr}&fov={fov}&pitch={pitchAngle}&key=#####&heading={fov*headingMult}&scale=2&radius=10"
-                            depth, newHeading = get_detection_depth_and_heading(depthModel, imagePath, shape, fov*headingMult, fov)
-                            lat, lon = adjustCoords(lat, log, newHeading, depth)
+                            depth, newBearing = get_detection_depth_and_heading(depthModel, imagePath, shape, fov*headingMult, fov)
+                            sign_lat, sign_lon = adjustCoords(lat, log, newBearing, depth)
                             if sign in ocrSigns:
                                 sign = ocr(shape, sign, f"images/raw/streetview_frame_{i}_heading_{fov*headingMult}.jpg",
                                         f"images/temp/cropped/crop_frame_{i}_heading_{fov*headingMult}_sign_{sign}.jpg", ocrModel, ocr_candidate_signs)
-                            addToGISFormatTable(datafile, sign, lat, lon, newHeading)
+                            addToGISFormatTable(datafile, sign, sign_lat, sign_lon, newBearing)
             except Exception as e:
                 print(e)
         i+=1
@@ -204,12 +204,12 @@ def drive_gopro(input_mp4, interval, datafile, ocr_candidate_signs = []):
             found = detect_and_store(framesrc, f"models/{model}")
             if(datafile != None):   
                 for sign, conf, shape in found:
-                    depth, newHeading = get_detection_depth_and_heading(depthModel, framesrc, shape, heading, fov)
-                    lat, lon = adjustCoords(lat, log, newHeading, depth)
-                    print(f"Adding {sign} at ({lat}, {lon}) to {datafile} table!")
+                    depth, newBearing = get_detection_depth_and_heading(depthModel, framesrc, shape, heading, fov)
+                    sign_lat, sign_lon = adjustCoords(lat, log, newBearing, depth)
+                    print(f"Adding {sign} at ({sign_lat}, {sign_lon}) to {datafile} table!")
                     if sign in ocrSigns:
                         sign = ocr(shape, sign, framesrc,
                                 f"images/temp/cropped/crop_{framesrc}", ocrModel, ocr_candidate_signs)
                     print(f"The new sign after OCR is {sign}!")
-                    addToGISFormatTable(datafile, sign, lat, lon, newHeading)
+                    addToGISFormatTable(datafile, sign, sign_lat, sign_lon, newBearing)
         previousLocation = (lat, log)
