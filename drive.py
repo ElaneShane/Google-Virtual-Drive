@@ -47,6 +47,8 @@ def csv_drive(filename, API_KEY, fov = 90, pitchAngle=0, datafile = None, ocr_ca
             response.raise_for_status()
             details = json.loads(response.content)
             locationStr = f"{details["location"]["lat"]},{details["location"]["lng"]}"
+            log = details["location"]["lng"]
+            lat = details["location"]["lat"]
         except Exception as e:
             print(e)        
 
@@ -124,8 +126,8 @@ def drive_route(origin, destination, API_KEY, minStep = 20, fov = 90, pitchAngle
 
 
     #get pictures from the longitude latitude points using streetview api and save them
-    for (log, lat) in route_points:
-        locationStr = f"{log},{lat}"
+    for (lat, log) in route_points:
+        locationStr = f"{lat},{log}"
         url = f"https://maps.googleapis.com/maps/api/streetview/metadata?location={locationStr}&key={API_KEY}"
         try:
             response = requests.get(url, stream=True)
