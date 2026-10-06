@@ -8,6 +8,7 @@ from transformers import pipeline
 from helper import *
 from paddleocr import PaddleOCR
 from geo import update_heading
+from ultralytics import YOLO
 ocrSigns = ["Tow Away Signs Letters", "Hourly Parking Sign"]
 
 
@@ -185,6 +186,11 @@ def drive_gopro(input_mp4, interval, datafile, ocr_candidate_signs = []):
         use_doc_unwarping=False,
         use_textline_orientation=False)
     
+    print("Loading YOLO models")
+    yolo_models = {name: YOLO(os.path.join("models", name))
+                   for name in sorted(os.listdir("models")) if name.endswith(".pt")}
+    print(f"Loaded {len(yolo_models)} models: {list(yolo_models)}")
+
     print("Creating Frames from GoPro Footage")
     frames = GoProFrames(input_mp4, outputFolder, interval)
     #set initial heading from location 1 to 2
@@ -197,23 +203,20 @@ def drive_gopro(input_mp4, interval, datafile, ocr_candidate_signs = []):
         fov = float(fov)
         lat = float(lat)
         log = float(log)
-        #if not the first picture reset bearing using previous and current location
-        heading, previousLocation = update_heading(heading, previousLocation, lat, log) # does first frame checking here
-        """
-        new crop handle is in 3 parts:
-        1. strip the folders so we have frame___.jpg
-        2. strip the extension so its just frame___
-        3. add model name and box{box_i} to the end so we have frame___model_box{box_i}.jpg
-        """
-        for model in os.listdir(os.path.join(os.getcwd(), "models")):
-            found = detect_and_store(framesrc, f"models/{model}")
-            if(datafile != None):
+        heading, previousLocation = update_heading(heading, previousLocation, lat, log)
+        depth = None    # computed on first detection, so frames with no signs skip the depth model
+
+        for model_name, yolo in yolo_models.items():
+            found = detect_and_store(framesrc, yolo)
+            if datafile is not None:
                 for box_i, (sign, conf, shape) in enumerate(found):
-                    depth, newBearing = get_detection_depth_and_heading(depthModel, framesrc, shape, heading, fov)
-                    sign_lat, sign_lon = adjustCoords(lat, log, newBearing, depth)
+                    if depth is None:
+                        depth = estimate_depth(depthModel, framesrc)
+                    box_depth, newBearing = get_box_depth_and_bearing(depth, shape, heading, fov)
+                    sign_lat, sign_lon = adjustCoords(lat, log, newBearing, box_depth)
                     print(f"Adding {sign} at ({sign_lat}, {sign_lon}) to {datafile} table!")
                     if sign in ocrSigns:
-                        crop_name = f"{os.path.splitext(os.path.basename(framesrc))[0]}_{os.path.splitext(model)[0]}_box{box_i}.jpg"
+                        crop_name = f"{os.path.splitext(os.path.basename(framesrc))[0]}_{os.path.splitext(model_name)[0]}_box{box_i}.jpg"
                         sign = ocr(shape, sign, framesrc,
                                    os.path.join("images/temp/cropped", crop_name), ocrModel, ocr_candidate_signs)
                     print(f"The new sign after OCR is {sign}!")

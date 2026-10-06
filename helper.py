@@ -11,11 +11,13 @@ from GoProDataHelper import *
 import gspread
 from oauth2client.service_account import ServiceAccountCredentials
 from torchmetrics.text import CharErrorRate
+import depth
 from geo import sign_bearing, adjustCoords, calculate_bearing
 
-def detect_and_store(src, modelName):
-    model = YOLO(modelName)
-    results = model.predict(source=src, conf=0.25)
+def detect_and_store(src, model, locationStr=None):
+    if isinstance(model, str):          # legacy callers pass a path
+        model = YOLO(model)
+    results = model.predict(source=src, conf=0.25, verbose=False)
     result = results[0]
     highConfSigns = []
     signTypes = []
@@ -114,25 +116,35 @@ def trim_points_by_distance(points, interval):
     return trimmedPoints
 
 
-def get_detection_depth_and_heading(model, src, boxCoords, heading, fov):
-    rawSrc = newSrc = src[0:len(src)-3] + "_raw_depth.jpg" 
-    boxCoords = [int(i) for i in boxCoords]
+def estimate_depth(model, src, save_depth_img=False):
+    """ runs the depth model once on a frame and returns a 2D tensor (height x width)"""
     with Image.open(src) as image:
-        depth = model(image)['predicted_depth']
-        depthImg = model(image)['depth']
-        depthImg.save(rawSrc)
-    #get depth
-    sum = 0
+        out = model(image)                      # send to model -->one call returns both outputs
+    if save_depth_img:
+        out['depth'].save(os.path.splitext(src)[0] + "_raw_depth.jpg")
+    return out['predicted_depth']               # returns the grid of distance numbers
+
+def get_box_depth_and_bearing(depth_tensor, boxCoords, heading, fov):
+    """ given a depth tensor and a box it calcualtes the depth value and the compass bearing"""
+    h, w = depth_tensor.shape
+    # clamp the box to the image size
     x1, y1, x2, y2 = boxCoords
-    for row in depth[y1:y2]:
-        for pixel in row[x1:x2]:
-            sum += pixel
-    avg_depth = sum/((x2-x1)*(y2-y1))
-    
-    #update heading
-    boxX = (x1 + x2) / 2
-    newBearing = sign_bearing(heading, boxX, depth.size(1), fov)
-    return (avg_depth.item(), newBearing)
+    x1, x2 = max(0, int(x1)), min(w, int(x2))
+    y1, y2 = max(0, int(y1)), min(h, int(y2))
+    if x2 <= x1 or y2 <= y1:
+        raise ValueError(f"Empty box after clamping: {boxCoords}")
+    # get the squares from the distance map that matches the signs bounding box (using median to avoid external noise)
+    box_depth = depth_tensor[y1:y2, x1:x2].median().item()
+    # calculate the bearing
+    bearing = sign_bearing(heading, (x1 + x2) / 2, w, fov)
+    return box_depth, bearing
+
+# wrapper
+def get_detection_depth_and_heading(model, src, boxCoords, heading, fov):
+    """Legacy wrapper (Street View modes): reruns depth on every call."""
+    return get_box_depth_and_bearing(estimate_depth(model, src), boxCoords, heading, fov)
+
+
 
 # purpose: given a box, this will zoom in and read the actaul text and figure out exactly what kinds of specific sign the object detected is
 ''' additions:

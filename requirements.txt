@@ -1,6 +1,6 @@
 # Install torch/torchvision FIRST from the CPU index (see README):
 #   pip install torch==2.9.1 torchvision==0.24.1 --index-url https://download.pytorch.org/whl/cpu
-# paddlepaddle is also installed separately: pip install paddlepaddle
+# paddlepaddle is also installed separately: pip install paddlepaddle (version 3.3.1)
 
 # Detection / depth / OCR
 ultralytics==8.3.228
