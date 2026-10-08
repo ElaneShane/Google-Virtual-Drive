@@ -31,7 +31,7 @@ def csv_drive(filename, API_KEY, fov = 90, pitchAngle=0, datafile = None, ocr_ca
     i=1
 
     #load Depth Anything v2 Model
-    depthModel = pipeline(task="depth-estimation", model="depth-anything/Depth-Anything-V2-Small-hf")
+    depthModel = pipeline(task="depth-estimation", model="depth-anything/Depth-Anything-V2-Metric-Outdoor-Small-hf")
 
     #load paddleOCR model
     ocrModel = PaddleOCR(
@@ -117,7 +117,7 @@ def drive_route(origin, destination, API_KEY, minStep = 20, fov = 90, pitchAngle
     route_points = trim_points_by_distance(route_points, minStep)
 
     #load Depth Anything v2 Model
-    depthModel = pipeline(task="depth-estimation", model="depth-anything/Depth-Anything-V2-Small-hf")
+    depthModel = pipeline(task="depth-estimation", model="depth-anything/Depth-Anything-V2-Metric-Outdoor-Small-hf")
 
     #load paddleOCR model
     ocrModel = PaddleOCR(
@@ -179,11 +179,12 @@ def drive_gopro(input_mp4, interval, datafile, ocr_candidate_signs = []):
 
     #load Depth Anything v2 Model
     print("Loading Depth and OCR Models")
-    depthModel = pipeline(task="depth-estimation", model="depth-anything/Depth-Anything-V2-Small-hf")
+    depthModel = pipeline(task="depth-estimation", model="depth-anything/Depth-Anything-V2-Metric-Outdoor-Small-hf")
     #load paddleOCR model
     ocrModel = PaddleOCR(
         use_doc_orientation_classify=False,
         use_doc_unwarping=False,
+        enable_mkldnn=False,
         use_textline_orientation=False)
     
     print("Loading YOLO models")
@@ -215,9 +216,15 @@ def drive_gopro(input_mp4, interval, datafile, ocr_candidate_signs = []):
                     box_depth, newBearing = get_box_depth_and_bearing(depth, shape, heading, fov)
                     sign_lat, sign_lon = adjustCoords(lat, log, newBearing, box_depth)
                     print(f"Adding {sign} at ({sign_lat}, {sign_lon}) to {datafile} table!")
+                    #debug: check the label before we pass off to OCR
+                    add_debug_row("tables/debug_detections.csv", os.path.basename(framesrc), model_name,
+                        sign, conf, shape, box_depth, newBearing, sign_lat, sign_lon)
                     if sign in ocrSigns:
                         crop_name = f"{os.path.splitext(os.path.basename(framesrc))[0]}_{os.path.splitext(model_name)[0]}_box{box_i}.jpg"
-                        sign = ocr(shape, sign, framesrc,
-                                   os.path.join("images/temp/cropped", crop_name), ocrModel, ocr_candidate_signs)
+                        try:
+                            sign = ocr(shape, sign, framesrc,
+                                    os.path.join("images/temp/cropped", crop_name), ocrModel, ocr_candidate_signs)
+                        except Exception as e:
+                            print(f"OCR failed for {crop_name}, keeping detector label: {e}")
                     print(f"The new sign after OCR is {sign}!")
                     addToGISFormatTable(datafile, sign, sign_lat, sign_lon, newBearing)

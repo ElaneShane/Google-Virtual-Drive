@@ -11,8 +11,7 @@ from GoProDataHelper import *
 import gspread
 from oauth2client.service_account import ServiceAccountCredentials
 from torchmetrics.text import CharErrorRate
-import depth
-from geo import sign_bearing, adjustCoords, calculate_bearing
+from geo import sign_bearing, adjustCoords, calculate_bearing, distance_m
 
 def detect_and_store(src, model, locationStr=None):
     if isinstance(model, str):          # legacy callers pass a path
@@ -257,32 +256,60 @@ def GoProProcessing(input_mp4, outdir, interval, interp_gap, nearest_gap):
         print("  ", p)
 
 
-
 def GoProFrames(input_mp4, outdir, interval):
-    exiftool_bin = exiftool_cmd()
+    """ Cut a frame every inteval seconds and give each one the GPS point from that moment"""
 
+    # locate exiftool and error extract out if not found
+    exiftool_bin = exiftool_cmd()
+    if not exiftool_bin:   
+        raise FileNotFoundError("exiftool not found. Please install")
+
+    # get the video frames and their GPS track
+    #  extract the frames every N secomds --> return a list of tuples [(jpg_path, video_t_seconds)]
     frames = extract_frames_every_n_seconds(input_mp4, outdir, interval)
+    # then get the sorted GPS samples and return [(utc_timestamp, lat, lon), ...]
     gpsData = get_gopro_timed_gps(input_mp4, exiftool_bin)
 
-    pairedData = []
-    frameNum = 0
-    timer = 0
-    previous = float(gpsData[0][1].split(':')[2])
-    for data in gpsData:
-        time = float(data[1].split(':')[2])
-        if(previous >= 59.0):
-            timer+= (60.0-previous) + time
-        else:
-            timer+=time-previous
-        
-        if(timer >= interval):
-            timer -= interval
+    paired = []          # FORMAT: [jpg_path, lat, lon, HFOV_DEG]
+    prev = None          # (lat, lon) of the last frame we kept
 
-            pairedData.append([frames[frameNum][0], data[2], data[3], data[4]])
-            frameNum+=1
-        previous = time
+    # match each frame to its nearest GPS coordinate [2D image on file --> 2D coordinate point on Earth]
+    for jpg_path, video_t in frames:
+        # find the GPS reading recorded closest to this moment of the video
+        gps_video_t, _utc, lat, lon = min(gpsData, key=lambda g: abs(g[0] - video_t))
+        gap = abs(gps_video_t - video_t) # how many video seconds aprt the two are
 
-    return pairedData
+        moved = ""
+        if prev is not None:
+            moved = f" | moved {distance_m(prev[0], prev[1], lat, lon):5.1f} m since last frame" # checking how far the truck moved from the last frame
+        print(f"{os.path.basename(jpg_path)}  video {video_t:6.1f}s -> GPS {lat:.6f}, {lon:.6f}  (off by {gap:.1f}s){moved}")
+
+        if gap > MAX_GPS_GAP_S:
+            print("   skipped: no GPS reading close enough")
+            continue
+
+        paired.append([jpg_path, lat, lon, HFOV_DEG])
+        prev = (lat, lon)
+    return paired
 
 
-
+# debug logs
+def add_debug_row(filename, frame, model_file, label, conf, box, depth_m, bearing, sign_lat, sign_lon):
+    """TEMPORARY: logs one detection with everything needed to judge it later."""
+    fields = ["frame", "model_file", "label", "confidence",
+              "x1", "y1", "x2", "y2", "depth_m", "bearing",
+              "sign_lat", "sign_lon", "correct"]
+    row = {
+        "frame": frame, "model_file": model_file, "label": label,
+        "confidence": round(conf, 3),
+        "x1": int(box[0]), "y1": int(box[1]), "x2": int(box[2]), "y2": int(box[3]),
+        "depth_m": round(depth_m, 2), "bearing": round(bearing, 1),
+        "sign_lat": sign_lat, "sign_lon": sign_lon,
+        "correct": "",
+    }
+    new_file = not os.path.exists(filename)
+    with open(filename, "a", newline="") as f:
+        writer = csv.DictWriter(f, fieldnames=fields)
+        if new_file:
+            writer.writeheader()
+        writer.writerow(row)

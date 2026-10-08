@@ -5,6 +5,8 @@ import os, math, shutil, subprocess
 from pathlib import Path
 from typing import List, Tuple, Optional
 from bisect import bisect_left
+from datetime import datetime, timezone
+
 
 import cv2
 from PIL import Image
@@ -18,6 +20,8 @@ import piexif
 #nearest_gap = 10.0     # max seconds for nearest fallback
 # EXIFTOOL    = "exiftool-13.40_64/exiftool.exe" 
 EXIFTOOL    = "/usr/local/bin/exiftool.exe"  # set to None if exiftool is on PATH
+HFOV_DEG = 87.0 # horizontal FOV, HERO10 Black, Linear, HyperSmooth High (GoPro FOV table)
+MAX_GPS_GAP_S = 3.0 # in case of gps signla being lost 
 # --------------------------------------------------------------------- #
 
 def exiftool_cmd() -> Optional[str]:
@@ -203,26 +207,59 @@ def exiftool_cmd() -> Optional[str]:
 # pair and pass to algorithm
 
 # ---------- GPS extraction (GoPro-aware) ----------
-def get_gopro_timed_gps(mp4_path: str, exiftool_bin: str):
-    """
-    Use -ee3 to pull GoPro GPMF timed GPS + GPSFix.
-    Returns [(time_s, lat, lon)] filtered to good fixes (GPSFix >= 2).
-    """
-    cmd = [
-        exiftool_bin, "-ee3", "-api", "largefilesupport=1", "-n",
-        "-p", "$GPSDateTime $GPSLatitude $GPSLongitude $Main:DiagonalFieldOfView",
-        mp4_path
-    ]
-    try:
-        out = subprocess.check_output(cmd, stderr=subprocess.STDOUT, text=True)
-    except subprocess.CalledProcessError:
-        print("ERROR OR SMTH")
-        return []
+def gps_time_to_seconds(date_str, time_str):
+    """Convert GPSDateTime string to seconds since epoch. ex output: 2025:10:14 00:29:51.599"""
+    time_str = time_str.rstrip("Z")  # Remove trailing 'Z' (not always there)
+    # format YYYY:MM:DD HH:MM:SS[.fff]
+    fmt = "%Y:%m:%d %H:%M:%S.%f" if "." in time_str else "%Y:%m:%d %H:%M:%S"
+    dt = datetime.strptime(f"{date_str} {time_str}", fmt)
+    return dt.replace(tzinfo=timezone.utc).timestamp()
+
+def get_gopro_timed_gps(mp4_path, exiftool_bin):
+    """ Return a list that is sorted of (time_in_Seconds, lat, lon) tuples from the GoPro GPMF data. """
+    # first make the terminal commd to extract the raw telemetry from the video 
+    cmd = [exiftool_bin, "-ee3", "-api", "largefilesupport=1", "-n",
+           "-p", "$SampleTime $GPSDateTime $GPSLatitude $GPSLongitude", mp4_path]
+
+    # now we have gone through the full video and extracted all the metadata embeeded in it.
+    # we can run it
+    result = subprocess.run(cmd, capture_output=True, text=True)
+    if result.returncode != 0:
+        print(f"Error running exiftool: {result.stderr}")
+
+    # create a list to hold the gps data
     samples = []
-    for line in out.splitlines():
-        parts = line.strip().split()
-        #t   = (parts[1]); lat = (parts[2]); lon = (parts[3])
-        if(len(parts) == 5):
-            samples.append(parts)
-    #samples.sort(key=lambda x: x[0])
+
+    # start parsing the output line by line
+    for line in result.stdout.splitlines():
+        parts = line.strip().split() # get the individual tokens 
+
+        # a vild line will look like: [SampleTime, Date, Time, Latitude, Longitude]
+        if len(parts) != 5:
+            continue # skip invalid lines  
+
+        try:
+            video_t = float(parts[0])
+            utc_t = gps_time_to_seconds(parts[1], parts[2])
+            lat = float(parts[3])
+            lon = float(parts[4])
+        except ValueError:
+            continue  # skip lines with conversion errors
+
+        # we now can filter out the invalid lines
+        # GoPro defaults to (0.0, 0.0) before satellite lock is acquired ("Null Island")
+        if lat == 0.0 and lon == 0.0:
+            continue  # skip invalid GPS coordinates
+
+        # add the valid gps data to the list
+        samples.append((video_t, utc_t, lat, lon))
+
+    # now sort and check that all the coordinates are ordered chronologically by timestamp
+    samples.sort(key=lambda x: x[0])
+
+    if not samples:
+        # print("No valid GPS data found in the GoPro video.")
+        raise RuntimeError("No valid GPS data found in the GoPro video.")
+
     return samples
+        
