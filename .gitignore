@@ -9,6 +9,7 @@ credentials.json
 *.csv
 /obj
 /video/*
-/old_models
+/old_models/*
+/models/*
 /exiftool-13.40_64
 venv/
