@@ -11,7 +11,8 @@ from GoProDataHelper import *
 import gspread
 from oauth2client.service_account import ServiceAccountCredentials
 from torchmetrics.text import CharErrorRate
-from geo import sign_bearing, adjustCoords, calculate_bearing, distance_m
+from geo import sign_bearing, adjustCoords, calculate_bearing, distance_m, heading_from_track, fill_missing_headings
+
 
 def detect_and_store(src, model, locationStr=None):
     if isinstance(model, str):          # legacy callers pass a path
@@ -270,8 +271,12 @@ def GoProFrames(input_mp4, outdir, interval):
     # then get the sorted GPS samples and return [(utc_timestamp, lat, lon), ...]
     gpsData = get_gopro_timed_gps(input_mp4, exiftool_bin)
 
-    paired = []          # FORMAT: [jpg_path, lat, lon, HFOV_DEG]
-    prev = None          # (lat, lon) of the last frame we kept
+    # simplified track for the heading math: (video seconds, lat, lon)
+    track = [(g[0], g[2], g[3]) for g in gpsData]
+
+    paired = []          # FORMAT: [jpg_path, lat, lon, HFOV_DEG, heading]
+    raw_headings = []    # one per kept frame, may contain None
+    prev = None
 
     # match each frame to its nearest GPS coordinate [2D image on file --> 2D coordinate point on Earth]
     for jpg_path, video_t in frames:
@@ -289,7 +294,16 @@ def GoProFrames(input_mp4, outdir, interval):
             continue
 
         paired.append([jpg_path, lat, lon, HFOV_DEG])
+        raw_headings.append(heading_from_track(track, video_t))   # heading from GPS points around this frame
         prev = (lat, lon)
+
+    if not paired:
+        raise RuntimeError("No frames could be paired with GPS.")
+
+    headings = fill_missing_headings(raw_headings)
+    for row, h in zip(paired, headings):
+        row.append(h)
+        print(f"{os.path.basename(row[0])} heading {h:.1f} deg")
     return paired
 
 

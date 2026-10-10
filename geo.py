@@ -86,3 +86,37 @@ def update_heading(heading, ref, lat, lon, min_move_m=3.0):
     # else, if the truck has moved more than 3 mteres fromthe ref point, then we can trust the movement for GPS
     # so we calculate the new heading and return it along with the new reference point for the next cycle
     return calculate_bearing(ref[0], ref[1], lat, lon), (lat, lon)
+
+
+def heading_from_track(track, t, half_window=2.0, min_move_m=8.0, max_half_window=8.0):
+    """Direction the truck is traveling at video time t.
+    track: list of (video_seconds, lat, lon), sorted by time.
+    Returns a bearing 0-360, or None if the truck didn't move enough."""
+    hw = half_window
+    while hw <= max_half_window:
+        # nearest GPS point to "hw seconds before" and "hw seconds after" this frame
+        # (near the ends of the clip, the nearest point is just the first/last one)
+        before = min(track, key=lambda p: abs(p[0] - (t - hw)))
+        after = min(track, key=lambda p: abs(p[0] - (t + hw)))
+        # only trust the direction if the truck actually moved between the two points
+        if distance_m(before[1], before[2], after[1], after[2]) >= min_move_m:
+            return calculate_bearing(before[1], before[2], after[1], after[2])
+        hw *= 2   # stopped or crawling: look at a wider window (2 -> 4 -> 8 seconds)
+    return None   # never moved enough: heading unknown
+
+
+def fill_missing_headings(headings):
+    """Replace None entries with the nearest known heading (carry the last good one forward,
+    and fill any Nones at the very start from the first good one)."""
+    if all(h is None for h in headings):
+        raise ValueError("No frame had a usable heading (the truck never moved?)")
+    filled = list(headings)
+    last = None
+    for i, h in enumerate(filled):
+        if h is None:
+            filled[i] = last      # copy the previous good heading (may still be None at the start)
+        else:
+            last = h
+    first_good = next(h for h in filled if h is not None)
+    return [first_good if h is None else h for h in filled]
+

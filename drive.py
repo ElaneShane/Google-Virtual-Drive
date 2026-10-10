@@ -194,17 +194,13 @@ def drive_gopro(input_mp4, interval, datafile, ocr_candidate_signs = []):
 
     print("Creating Frames from GoPro Footage")
     frames = GoProFrames(input_mp4, outputFolder, interval)
-    #set initial heading from location 1 to 2
-    heading = calculate_bearing(float(frames[0][1]), float(frames[0][2]), float(frames[1][1]), float(frames[1][2]))
-    previousLocation = None
 
     print("Analyzing Frames")
     print(f"OCR signs are: {ocr_candidate_signs}")
-    for (framesrc, lat, log, fov) in frames:
+    for (framesrc, lat, log, fov, heading) in frames:
         fov = float(fov)
         lat = float(lat)
         log = float(log)
-        heading, previousLocation = update_heading(heading, previousLocation, lat, log)
         depth = None    # computed on first detection, so frames with no signs skip the depth model
 
         for model_name, yolo in yolo_models.items():
