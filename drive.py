@@ -2,6 +2,7 @@ import polyline
 import requests
 import os
 import csv
+import time
 from google.maps import routing_v2
 import json
 from transformers import pipeline
@@ -177,6 +178,8 @@ def drive_gopro(input_mp4, interval, datafile, ocr_candidate_signs = []):
     os.makedirs(outputFolder, exist_ok = True)
     os.makedirs(croppedImageFolder, exist_ok=True)
 
+    run_start = time.perf_counter()    # TIMING: stopwatch for the whole run
+
     #load Depth Anything v2 Model
     print("Loading Depth and OCR Models")
     depthModel = pipeline(task="depth-estimation", model="depth-anything/Depth-Anything-V2-Metric-Outdoor-Small-hf")
@@ -191,24 +194,40 @@ def drive_gopro(input_mp4, interval, datafile, ocr_candidate_signs = []):
     yolo_models = {name: YOLO(os.path.join("models", name))
                    for name in sorted(os.listdir("models")) if name.endswith(".pt")}
     print(f"Loaded {len(yolo_models)} models: {list(yolo_models)}")
-
+    
+    setup_s = time.perf_counter() - run_start    # TIMING: setup = everything since run_start
+    print(f"TIMING setup (load all models): {setup_s:.1f} s")    # TIMING
+    
     print("Creating Frames from GoPro Footage")
+    t_frames = time.perf_counter()    # TIMING
     frames = GoProFrames(input_mp4, outputFolder, interval)
+    cut_s = time.perf_counter() - t_frames    # TIMING
+    print(f"TIMING cutting {len(frames)} frames + GPS pairing: {cut_s:.1f} s")    # TIMING
+
 
     print("Analyzing Frames")
     print(f"OCR signs are: {ocr_candidate_signs}")
+    frame_log = []    # TIMING: one entry per frame: (total, detect, depth, ocr)
     for (framesrc, lat, log, fov, heading) in frames:
+        frame_start = time.perf_counter()    # TIMING
+        detect_s = 0.0    # TIMING: running totals for THIS frame
+        depth_s = 0.0
+        ocr_s = 0.0
         fov = float(fov)
         lat = float(lat)
         log = float(log)
         depth = None    # computed on first detection, so frames with no signs skip the depth model
 
         for model_name, yolo in yolo_models.items():
+            t = time.perf_counter()    # TIMING
             found = detect_and_store(framesrc, yolo)
+            detect_s += time.perf_counter() - t    # TIMING
             if datafile is not None:
                 for box_i, (sign, conf, shape) in enumerate(found):
                     if depth is None:
+                        t = time.perf_counter()    # TIMING
                         depth = estimate_depth(depthModel, framesrc)
+                        depth_s += time.perf_counter() - t    # TIMING
                     box_depth, newBearing = get_box_depth_and_bearing(depth, shape, heading, fov)
                     sign_lat, sign_lon = adjustCoords(lat, log, newBearing, box_depth)
                     print(f"Adding {sign} at ({sign_lat}, {sign_lon}) to {datafile} table!")
@@ -217,10 +236,31 @@ def drive_gopro(input_mp4, interval, datafile, ocr_candidate_signs = []):
                         sign, conf, shape, box_depth, newBearing, sign_lat, sign_lon)
                     if sign in ocrSigns:
                         crop_name = f"{os.path.splitext(os.path.basename(framesrc))[0]}_{os.path.splitext(model_name)[0]}_box{box_i}.jpg"
+                        t = time.perf_counter()    # TIMING
                         try:
                             sign = ocr(shape, sign, framesrc,
                                     os.path.join("images/temp/cropped", crop_name), ocrModel, ocr_candidate_signs)
                         except Exception as e:
                             print(f"OCR failed for {crop_name}, keeping detector label: {e}")
+                        ocr_s += time.perf_counter() - t    # TIMING
                     print(f"The new sign after OCR is {sign}!")
                     addToGISFormatTable(datafile, sign, sign_lat, sign_lon, newBearing)
+     
+        total_s = time.perf_counter() - frame_start    # TIMING
+        frame_log.append((total_s, detect_s, depth_s, ocr_s))    # TIMING
+        print(f"TIMING frame {os.path.basename(framesrc)}: total {total_s:.1f} s | "
+              f"detect {detect_s:.1f} | depth {depth_s:.1f} | ocr {ocr_s:.1f}")    # TIMING
+    # TIMING: summary at the end of the run
+    if frame_log:
+        n = len(frame_log)
+        avg = lambda i: sum(x[i] for x in frame_log) / n
+        print("=" * 50)
+        print(f"TIMING SUMMARY ({n} frames, {len(yolo_models)} YOLO models)")
+        print(f"  setup (once per run):   {setup_s:.1f} s")
+        print(f"  cutting frames:         {cut_s:.1f} s")
+        print(f"  avg per frame, total:   {avg(0):.2f} s")
+        print(f"  avg per frame, detect:  {avg(1):.2f} s")
+        print(f"  avg per frame, depth:   {avg(2):.2f} s  (only frames with a detection)")
+        print(f"  avg per frame, ocr:     {avg(3):.2f} s")
+        print(f"  slowest frame:          {max(x[0] for x in frame_log):.1f} s")
+        print(f"  whole run:              {time.perf_counter() - run_start:.1f} s")

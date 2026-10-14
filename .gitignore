@@ -14,3 +14,4 @@ credentials.json
 /exiftool-13.40_64
 venv/
 /uncomitted/*
+run_gopro_tests.py
