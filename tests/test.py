@@ -1,6 +1,6 @@
 import drive
 import helper
-from load_excel_and_test_ocr import load_excel
+from tests.load_excel_and_test_ocr import load_excel
 
 with open('secrets.txt') as f:
     API_KEY = f.readline().strip('\n')

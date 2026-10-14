@@ -12,7 +12,7 @@ import gspread
 from oauth2client.service_account import ServiceAccountCredentials
 from torchmetrics.text import CharErrorRate
 from geo import sign_bearing, adjustCoords, calculate_bearing, distance_m, heading_from_track, fill_missing_headings
-
+from camera import hfov_for_clip, yaw_for_clip
 
 def detect_and_store(src, model, locationStr=None):
     if isinstance(model, str):          # legacy callers pass a path
@@ -264,7 +264,11 @@ def GoProFrames(input_mp4, outdir, interval):
     exiftool_bin = exiftool_cmd()
     if not exiftool_bin:   
         raise FileNotFoundError("exiftool not found. Please install")
-
+    
+    hfov = hfov_for_clip(input_mp4, exiftool_bin)       # field of view for THIS clip's camera
+    yaw, yaw_status = yaw_for_clip(input_mp4)           # which way THIS clip's camera points
+    print(f"Camera: HFOV {hfov} deg, yaw {yaw} deg ({yaw_status})")
+    
     # get the video frames and their GPS track
     #  extract the frames every N secomds --> return a list of tuples [(jpg_path, video_t_seconds)]
     frames = extract_frames_every_n_seconds(input_mp4, outdir, interval)
@@ -293,7 +297,7 @@ def GoProFrames(input_mp4, outdir, interval):
             print("   skipped: no GPS reading close enough")
             continue
 
-        paired.append([jpg_path, lat, lon, HFOV_DEG])
+        paired.append([jpg_path, lat, lon, hfov])
         raw_headings.append(heading_from_track(track, video_t))   # heading from GPS points around this frame
         prev = (lat, lon)
 
@@ -302,8 +306,9 @@ def GoProFrames(input_mp4, outdir, interval):
 
     headings = fill_missing_headings(raw_headings)
     for row, h in zip(paired, headings):
-        row.append(h)
-        print(f"{os.path.basename(row[0])} heading {h:.1f} deg")
+        camera_heading = (h + yaw) % 360    # travel direction + camera turn
+        row.append(camera_heading)
+        print(f"{os.path.basename(row[0])} travel {h:.1f} deg -> camera faces {camera_heading:.1f} deg")
     return paired
 
 
