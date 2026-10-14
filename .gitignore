@@ -13,3 +13,4 @@ credentials.json
 /models/*
 /exiftool-13.40_64
 venv/
+/uncomitted/*
