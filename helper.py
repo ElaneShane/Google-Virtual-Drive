@@ -13,6 +13,7 @@ from oauth2client.service_account import ServiceAccountCredentials
 from torchmetrics.text import CharErrorRate
 from geo import sign_bearing, adjustCoords, calculate_bearing, distance_m, heading_from_track, fill_missing_headings
 from camera import hfov_for_clip, yaw_for_clip
+from gps_quality import check_hops, find_bad_points
 
 def detect_and_store(src, model, locationStr=None):
     if isinstance(model, str):          # legacy callers pass a path
@@ -269,14 +270,57 @@ def GoProFrames(input_mp4, outdir, interval):
     yaw, yaw_status = yaw_for_clip(input_mp4)           # which way THIS clip's camera points
     print(f"Camera: HFOV {hfov} deg, yaw {yaw} deg ({yaw_status})")
     
-    # get the video frames and their GPS track
-    #  extract the frames every N secomds --> return a list of tuples [(jpg_path, video_t_seconds)]
+    # get the video frames and their GPS track, unpacking all fields 
     frames = extract_frames_every_n_seconds(input_mp4, outdir, interval)
-    # then get the sorted GPS samples and return [(utc_timestamp, lat, lon), ...]
-    gpsData = get_gopro_timed_gps(input_mp4, exiftool_bin)
+    gpsData = get_gopro_timed_gps(
+    input_mp4,
+    exiftool_bin,
+        include_quality=True
+    )
+
+    # Check 1: keep only records the camera says have a satellite lock
+    usable_gps = [
+        g for g in gpsData
+        if g[4] is not None
+        and g[4] >= 2
+        and g[2] != 0
+        and g[3] != 0
+    ]
+
+    if not usable_gps:
+        raise RuntimeError(
+            f"No usable GPS records found in {input_mp4}. "
+            "Check the video's GPS telemetry and GPS fix status."
+        )
+
+    # Checks 2 and 3: find points whose position disagrees with the camera's own speed
+    hop_results = check_hops(usable_gps)
+    bad, questionable = find_bad_points(usable_gps, hop_results)
+    good_gps = [g for g in usable_gps if g[0] not in bad]   # bad points are removed
+
+    # Diagnostic report: every point we did not fully trust, and why
+    usable_times = {g[0] for g in usable_gps}
+    diagnostic = []
+    for g in gpsData:
+        if g[0] not in usable_times:
+            diagnostic.append((g[0], "rejected", f"no satellite lock (mode {g[4]})"))
+        elif g[0] in bad:
+            diagnostic.append((g[0], "rejected", "position jump disagrees with camera speed"))
+        elif g[0] in questionable:
+            diagnostic.append((g[0], "questionable", "hop disagrees with camera speed, unclear which end is wrong"))
+
+    os.makedirs(outdir, exist_ok=True)
+    diag_path = os.path.join(outdir, "gps_diagnostic.csv")
+    with open(diag_path, "w", newline="") as f:
+        writer = csv.writer(f)
+        writer.writerow(["video_t", "status", "reason"])
+        writer.writerows(diagnostic)
+    print(f"GPS: {len(gpsData)} read | {len(usable_gps)} had a lock | "
+          f"{len(bad)} bad jumps removed | {len(questionable)} questionable | "
+          f"{len(good_gps)} kept. Report: {diag_path}")
 
     # simplified track for the heading math: (video seconds, lat, lon)
-    track = [(g[0], g[2], g[3]) for g in gpsData]
+    track = [(g[0], g[2], g[3]) for g in usable_gps]
 
     paired = []          # FORMAT: [jpg_path, lat, lon, HFOV_DEG, heading]
     raw_headings = []    # one per kept frame, may contain None
@@ -285,7 +329,8 @@ def GoProFrames(input_mp4, outdir, interval):
     # match each frame to its nearest GPS coordinate [2D image on file --> 2D coordinate point on Earth]
     for jpg_path, video_t in frames:
         # find the GPS reading recorded closest to this moment of the video
-        gps_video_t, _utc, lat, lon = min(gpsData, key=lambda g: abs(g[0] - video_t))
+        nearest = min(good_gps, key=lambda g: abs(g[0] - video_t))
+        gps_video_t, _utc, lat, lon = nearest[:4]
         gap = abs(gps_video_t - video_t) # how many video seconds aprt the two are
 
         moved = ""

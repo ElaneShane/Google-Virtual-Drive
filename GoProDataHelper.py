@@ -215,51 +215,93 @@ def gps_time_to_seconds(date_str, time_str):
     dt = datetime.strptime(f"{date_str} {time_str}", fmt)
     return dt.replace(tzinfo=timezone.utc).timestamp()
 
-def get_gopro_timed_gps(mp4_path, exiftool_bin):
-    """ Return a list that is sorted of (time_in_Seconds, lat, lon) tuples from the GoPro GPMF data. """
-    # first make the terminal commd to extract the raw telemetry from the video 
-    cmd = [exiftool_bin, "-ee3", "-api", "largefilesupport=1", "-n",
-           "-p", "$SampleTime $GPSDateTime $GPSLatitude $GPSLongitude", mp4_path]
+def get_gopro_timed_gps(mp4_path, exiftool_bin, include_quality=False):
+    """ Return a list that is sorted of (time_in_Seconds, lat, lon) tuples from the GoPro GPMF data.
+        Default return format (backward compatible):
+            (video_t, utc_t, lat, lon)
 
+        With include_quality=True:
+            (video_t, utc_t, lat, lon, mode, h_error, speed_mps) 
+    """
+    # first make the terminal commd to extract the raw telemetry from the video (with gps flags)
+    cmd = [
+        exiftool_bin,
+        "-ee3",
+        "-api", "largefilesupport=1",
+        "-n",
+        "-f",
+        "-p",
+        "$SampleTime|$GPSDateTime|$GPSMeasureMode|"
+        "$GPSHPositioningError|$GPSSpeed|$GPSLatitude|$GPSLongitude",
+        mp4_path,
+    ]
     # now we have gone through the full video and extracted all the metadata embeeded in it.
     # we can run it
     result = subprocess.run(cmd, capture_output=True, text=True)
     if result.returncode != 0:
         print(f"Error running exiftool: {result.stderr}")
 
+
+    def optional_float(value):
+        try:
+            return float(value) if value.strip() not in ("", "-") else None
+        except ValueError:
+            return None
+
+    def optional_int(value):
+        number = optional_float(value)
+        return int(number) if number is not None else None
+
     # create a list to hold the gps data
     samples = []
 
     # start parsing the output line by line
     for line in result.stdout.splitlines():
-        parts = line.strip().split() # get the individual tokens 
+        parts = line.strip().split("|") # get the individual tokens 
 
         # a vild line will look like: [SampleTime, Date, Time, Latitude, Longitude]
-        if len(parts) != 5:
+        if len(parts) != 7:
             continue # skip invalid lines  
 
         try:
             video_t = float(parts[0])
-            utc_t = gps_time_to_seconds(parts[1], parts[2])
-            lat = float(parts[3])
-            lon = float(parts[4])
+            # GPSDateTime contains both a date and a time.
+            datetime_parts = parts[1].strip().split(maxsplit=1)
+            if len(datetime_parts) != 2:
+                continue
+
+            utc_t = gps_time_to_seconds(
+                datetime_parts[0], datetime_parts[1]
+            )
+
+            lat = float(parts[5])
+            lon = float(parts[6])
         except ValueError:
             continue  # skip lines with conversion errors
 
-        # we now can filter out the invalid lines
-        # GoPro defaults to (0.0, 0.0) before satellite lock is acquired ("Null Island")
+        # Ignore invalid coordinates.
+        if not (-90 <= lat <= 90 and -180 <= lon <= 180):
+            continue
         if lat == 0.0 and lon == 0.0:
-            continue  # skip invalid GPS coordinates
+            continue
 
-        # add the valid gps data to the list
-        samples.append((video_t, utc_t, lat, lon))
+        if include_quality:
+            mode = optional_int(parts[2])
+            h_error = optional_float(parts[3])
+            speed_mps = optional_float(parts[4])
 
-    # now sort and check that all the coordinates are ordered chronologically by timestamp
-    samples.sort(key=lambda x: x[0])
+            samples.append(
+                (video_t, utc_t, lat, lon, mode, h_error, speed_mps)
+            )
+        else:
+            samples.append((video_t, utc_t, lat, lon))
+
+    samples.sort(key=lambda sample: sample[0])
 
     if not samples:
-        # print("No valid GPS data found in the GoPro video.")
-        raise RuntimeError("No valid GPS data found in the GoPro video.")
+        raise RuntimeError(
+            "No valid GPS data found in the GoPro video."
+        )
 
     return samples
         
