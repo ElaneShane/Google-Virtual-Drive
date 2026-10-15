@@ -3,6 +3,7 @@ import requests
 import os
 import csv
 import time
+from datetime import datetime
 from google.maps import routing_v2
 import json
 from transformers import pipeline
@@ -170,13 +171,16 @@ def drive_route(origin, destination, API_KEY, minStep = 20, fov = 90, pitchAngle
 
 
 # physical drive with a GoPro camera
-def drive_gopro(input_mp4, interval, datafile, ocr_candidate_signs = []):
-    #prepare images folder
-    print("Preparing Directories")
-    outputFolder = "images/raw"
-    croppedImageFolder = "images/temp/cropped"
+def drive_gopro(input_mp4, interval, datafile, ocr_candidate_signs = [], run_dir = None):    #prepare images folder
+    if run_dir is None:     # safety net if someone calls this without a run folder
+        run_dir = os.path.join("runs", datetime.now().strftime("%Y-%m-%d_%H%M%S"))
+    outputFolder = os.path.join(run_dir, "frames")
+    croppedImageFolder = os.path.join(run_dir, "crops")
+    detectionsFolder = os.path.join(run_dir, "detections")
+    debug_path = os.path.join(run_dir, "debug_detections.csv")
     os.makedirs(outputFolder, exist_ok = True)
     os.makedirs(croppedImageFolder, exist_ok=True)
+    os.makedirs(detectionsFolder, exist_ok=True)
 
     run_start = time.perf_counter()    # TIMING: stopwatch for the whole run
 
@@ -223,7 +227,7 @@ def drive_gopro(input_mp4, interval, datafile, ocr_candidate_signs = []):
 
         for model_name, yolo in yolo_models.items():
             t = time.perf_counter()    # TIMING
-            found = detect_and_store(framesrc, yolo)
+            found = detect_and_store(framesrc, yolo, save_dir=detectionsFolder)
             detect_s += time.perf_counter() - t    # TIMING
             if datafile is not None:
                 for box_i, (sign, conf, shape) in enumerate(found):
@@ -240,7 +244,7 @@ def drive_gopro(input_mp4, interval, datafile, ocr_candidate_signs = []):
                         box_depth = newBearing = sign_lat = sign_lon = None
                         print(f"Adding {sign} with UNKNOWN location to {datafile} table!")
                     #debug: check the label before we pass off to OCR
-                    add_debug_row("tables/debug_detections.csv", os.path.basename(framesrc), model_name,
+                    add_debug_row(debug_path, os.path.basename(framesrc), model_name,
                         sign, conf, shape, box_depth, newBearing, sign_lat, sign_lon)
                     
                     if sign in ocrSigns:
@@ -248,7 +252,7 @@ def drive_gopro(input_mp4, interval, datafile, ocr_candidate_signs = []):
                         t = time.perf_counter()    # TIMING
                         try:
                             sign = ocr(shape, sign, framesrc,
-                                    os.path.join("images/temp/cropped", crop_name), ocrModel, ocr_candidate_signs)
+                                    os.path.join(croppedImageFolder, crop_name), ocrModel, ocr_candidate_signs)
                         except Exception as e:
                             print(f"OCR failed for {crop_name}, keeping detector label: {e}")
                         ocr_s += time.perf_counter() - t    # TIMING
