@@ -322,39 +322,47 @@ def GoProFrames(input_mp4, outdir, interval):
     # simplified track for the heading math: (video seconds, lat, lon)
     track = [(g[0], g[2], g[3]) for g in usable_gps]
 
-    paired = []          # FORMAT: [jpg_path, lat, lon, HFOV_DEG, heading]
-    raw_headings = []    # one per kept frame, may contain None
+    rows = []            # EVERY frame: [jpg_path, lat, lon, hfov, camera_heading]
+    located = []         # positions in `rows` of frames that have trusted GPS
+    raw_headings = []    # one per located frame, may contain None
+
     prev = None
 
-    # match each frame to its nearest GPS coordinate [2D image on file --> 2D coordinate point on Earth]
     for jpg_path, video_t in frames:
-        # find the GPS reading recorded closest to this moment of the video
+        name = os.path.basename(jpg_path)
+
+        # find the trusted GPS reading closest to this moment of the video
         nearest = min(good_gps, key=lambda g: abs(g[0] - video_t))
         gps_video_t, _utc, lat, lon = nearest[:4]
-        gap = abs(gps_video_t - video_t) # how many video seconds aprt the two are
+        gap = abs(gps_video_t - video_t)
+
+        if gap > MAX_GPS_GAP_S:
+            # no trustworthy GPS near this frame: KEEP it, but mark location unknown
+            print(f"{name}  video {video_t:6.1f}s -> no trusted GPS within {MAX_GPS_GAP_S}s "
+                  f"(nearest is {gap:.1f}s away). Keeping frame, location UNKNOWN.")
+            rows.append([jpg_path, None, None, hfov, None])
+            continue
 
         moved = ""
         if prev is not None:
-            moved = f" | moved {distance_m(prev[0], prev[1], lat, lon):5.1f} m since last frame" # checking how far the truck moved from the last frame
-        print(f"{os.path.basename(jpg_path)}  video {video_t:6.1f}s -> GPS {lat:.6f}, {lon:.6f}  (off by {gap:.1f}s){moved}")
+            moved = f" | moved {distance_m(prev[0], prev[1], lat, lon):5.1f} m since last located frame"
+        print(f"{name}  video {video_t:6.1f}s -> GPS {lat:.6f}, {lon:.6f}  (off by {gap:.1f}s){moved}")
 
-        if gap > MAX_GPS_GAP_S:
-            print("   skipped: no GPS reading close enough")
-            continue
-
-        paired.append([jpg_path, lat, lon, hfov])
-        raw_headings.append(heading_from_track(track, video_t))   # heading from GPS points around this frame
+        rows.append([jpg_path, lat, lon, hfov, None])      # heading filled in below
+        located.append(len(rows) - 1)
+        raw_headings.append(heading_from_track(track, video_t))
         prev = (lat, lon)
 
-    if not paired:
-        raise RuntimeError("No frames could be paired with GPS.")
+    if not located:
+        print("WARNING: no frame has trusted GPS. Detection will still run, every location is unknown.")
+        return rows
 
     headings = fill_missing_headings(raw_headings)
-    for row, h in zip(paired, headings):
-        camera_heading = (h + yaw) % 360    # travel direction + camera turn
-        row.append(camera_heading)
-        print(f"{os.path.basename(row[0])} travel {h:.1f} deg -> camera faces {camera_heading:.1f} deg")
-    return paired
+    for idx, h in zip(located, headings):
+        camera_heading = (h + yaw) % 360     # travel direction + camera turn
+        rows[idx][4] = camera_heading
+        print(f"{os.path.basename(rows[idx][0])} travel {h:.1f} deg -> camera faces {camera_heading:.1f} deg")
+    return rows
 
 
 # debug logs
@@ -367,7 +375,8 @@ def add_debug_row(filename, frame, model_file, label, conf, box, depth_m, bearin
         "frame": frame, "model_file": model_file, "label": label,
         "confidence": round(conf, 3),
         "x1": int(box[0]), "y1": int(box[1]), "x2": int(box[2]), "y2": int(box[3]),
-        "depth_m": round(depth_m, 2), "bearing": round(bearing, 1),
+        "depth_m": "" if depth_m is None else round(depth_m, 2),
+        "bearing": "" if bearing is None else round(bearing, 1),
         "sign_lat": sign_lat, "sign_lon": sign_lon,
         "correct": "",
     }

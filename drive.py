@@ -214,8 +214,11 @@ def drive_gopro(input_mp4, interval, datafile, ocr_candidate_signs = []):
         depth_s = 0.0
         ocr_s = 0.0
         fov = float(fov)
-        lat = float(lat)
-        log = float(log)
+        located = lat is not None          # False = no trusted GPS for this frame
+        if located:
+            lat = float(lat)
+            log = float(log)
+        
         depth = None    # computed on first detection, so frames with no signs skip the depth model
 
         for model_name, yolo in yolo_models.items():
@@ -224,16 +227,22 @@ def drive_gopro(input_mp4, interval, datafile, ocr_candidate_signs = []):
             detect_s += time.perf_counter() - t    # TIMING
             if datafile is not None:
                 for box_i, (sign, conf, shape) in enumerate(found):
-                    if depth is None:
-                        t = time.perf_counter()    # TIMING
-                        depth = estimate_depth(depthModel, framesrc)
-                        depth_s += time.perf_counter() - t    # TIMING
-                    box_depth, newBearing = get_box_depth_and_bearing(depth, shape, heading, fov)
-                    sign_lat, sign_lon = adjustCoords(lat, log, newBearing, box_depth)
-                    print(f"Adding {sign} at ({sign_lat}, {sign_lon}) to {datafile} table!")
+                    if located:
+                        if depth is None:
+                            t = time.perf_counter()    # TIMING
+                            depth = estimate_depth(depthModel, framesrc)
+                            depth_s += time.perf_counter() - t    # TIMING
+                        box_depth, newBearing = get_box_depth_and_bearing(depth, shape, heading, fov)
+                        sign_lat, sign_lon = adjustCoords(lat, log, newBearing, box_depth)
+                        print(f"Adding {sign} at ({sign_lat}, {sign_lon}) to {datafile} table!")
+                    else:
+                        # no trusted GPS: we can't place this sign, so skip depth, bearing and coordinates
+                        box_depth = newBearing = sign_lat = sign_lon = None
+                        print(f"Adding {sign} with UNKNOWN location to {datafile} table!")
                     #debug: check the label before we pass off to OCR
                     add_debug_row("tables/debug_detections.csv", os.path.basename(framesrc), model_name,
                         sign, conf, shape, box_depth, newBearing, sign_lat, sign_lon)
+                    
                     if sign in ocrSigns:
                         crop_name = f"{os.path.splitext(os.path.basename(framesrc))[0]}_{os.path.splitext(model_name)[0]}_box{box_i}.jpg"
                         t = time.perf_counter()    # TIMING
