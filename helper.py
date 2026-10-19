@@ -61,45 +61,32 @@ def addToTable(filename, signName, location, url, heading, confidence):
             writer.writeheader()
             writer.writerow(item)
 
+# Column names match the "Sign" layer in ArcGIS (Citian Field Check Assets).
+# x and y are the point's location. Everything else is a field in the layer.
+GIS_FIELDS = [
+    "x", "y",
+    "Sign_Type", "Associated_Sign_Support", "SignLocation_signsupport",
+    "Mounted_Height", "MUTCD_Code", "Stock_Number", "Signface_Size",
+    "Sign_text", "Sign_Arrow", "Primary_Street", "Cross_Street",
+    "End_of_Block", "Side_of_Street", "Faces_Traffic",
+    "Direction_from_Cross_Street", "Distance_from_Cross_Street",
+    "Sign_Orientation", "Condition",
+]
+
 
 def addToGISFormatTable(filename, signName, lat, long, heading):
-    item = {
-        'x': long,
-        'y': lat,
-        'z': 0.0,
-        'Sign_Type': signName,
-        'Sign_Suprt': "n/a",
-        'Suprt_Locat': "n/a",
-        'Mnt_Height': "n/a",
-        'MUTCD': "n/a",
-        'Stock_No': "n/a",
-        'Sign_Size': "n/a",
-        'Sign_Text': "n/a",
-        'P_Street': "n/a",
-        'Crs_Street': "n/a",
-        'EoB': "n/a",
-        'Side_Str': "n/a",
-        'Traf_face': "n/a",
-        'Dir_X_Str': "n/a",
-        'Sign_Dir': "n/a",
-        'Condition': "n/a",
-        'Post_Type': "n/a",
-        'Mnt_Surf': "n/a",
-        'Cncil_Dstr': "n/a",
-        
-    }
-    fields = item.keys()
-    if(os.path.exists(filename)):
-        with open(file = filename, mode = "a", newline='') as f:
-            writer = csv.DictWriter(f, fieldnames = fields)
-            writer.writerow(item)
+    # heading is accepted but it is saved in debug_detections.csv 
+    item = {name: "" for name in GIS_FIELDS}   # start with every column blank
+    item["x"] = long
+    item["y"] = lat
+    item["Sign_Type"] = signName
 
-    else:
-        with open(file = filename, mode = "x", newline='') as f:
-            writer = csv.DictWriter(f, fieldnames = fields)
+    is_new_file = not os.path.exists(filename)
+    with open(filename, "a", newline="") as f:
+        writer = csv.DictWriter(f, fieldnames=GIS_FIELDS)
+        if is_new_file:
             writer.writeheader()
-            writer.writerow(item)
-
+        writer.writerow(item)
 
 def trim_points_by_distance(points, interval):
     trimmedPoints = []
