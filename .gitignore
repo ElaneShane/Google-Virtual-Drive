@@ -14,5 +14,5 @@ credentials.json
 /exiftool-13.40_64
 venv/
 /uncomitted/*
-run_gopro_tests.pyrun_timing.log
+run_gopro_tests.py run_timing.log
 runs/
