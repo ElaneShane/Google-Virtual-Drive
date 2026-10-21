@@ -64,7 +64,7 @@ def addToTable(filename, signName, location, url, heading, confidence):
 # Column names match: "Citian Comparison Collection Form" table (GIS_Team_Citian_Field_Check)
 # x and y are the point's location. Everything else is a field in the layer.
 GIS_FIELDS = [
-    "x", "y",
+    "x", "y", "z",
     "asset_type",
     "sign_type", "sign_type_code",
     "associated_sign_support", "sign_location_in_a_sign_support",
