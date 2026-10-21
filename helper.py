@@ -15,10 +15,13 @@ from geo import sign_bearing, adjustCoords, calculate_bearing, distance_m, headi
 from camera import hfov_for_clip, yaw_for_clip
 from gps_quality import check_hops, find_bad_points
 
-def detect_and_store(src, model, locationStr=None, save_dir=None):
+def detect_and_store(src, model, locationStr=None, save_dir=None, imgsz=None):
     if isinstance(model, str):          # legacy callers pass a path
         model = YOLO(model)
-    results = model.predict(source=src, conf=0.25, verbose=False)
+    predict_args = {"source": src, "conf": 0.25, "verbose": False}
+    if imgsz:                              # only set a size if one was asked for
+        predict_args["imgsz"] = imgsz
+    results = model.predict(**predict_args)
     result = results[0]
     highConfSigns = []
     signTypes = []
@@ -131,6 +134,15 @@ def get_box_depth_and_bearing(depth_tensor, boxCoords, heading, fov):
     # calculate the bearing
     bearing = sign_bearing(heading, (x1 + x2) / 2, w, fov)
     return box_depth, bearing
+
+def find_model_files(models_dir="models"):
+    """List the .pt files directly inside models_dir (subfolders are ignored)."""
+    if not os.path.isdir(models_dir):
+        raise FileNotFoundError(f"Model folder not found: {models_dir}")
+    names = sorted(f for f in os.listdir(models_dir) if f.endswith(".pt"))
+    if not names:
+        raise FileNotFoundError(f"No .pt files in {models_dir}")
+    return names
 
 # wrapper
 def get_detection_depth_and_heading(model, src, boxCoords, heading, fov):

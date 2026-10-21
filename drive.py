@@ -171,7 +171,7 @@ def drive_route(origin, destination, API_KEY, minStep = 20, fov = 90, pitchAngle
 
 
 # physical drive with a GoPro camera
-def drive_gopro(input_mp4, interval, datafile, ocr_candidate_signs = [], run_dir = None):    #prepare images folder
+def drive_gopro(input_mp4, interval, datafile, ocr_candidate_signs = [], run_dir = None, models_dir = "models", imgsz = None):    
     if run_dir is None:     # safety net if someone calls this without a run folder
         run_dir = os.path.join("runs", datetime.now().strftime("%Y-%m-%d_%H%M%S"))
     outputFolder = os.path.join(run_dir, "frames")
@@ -195,8 +195,8 @@ def drive_gopro(input_mp4, interval, datafile, ocr_candidate_signs = [], run_dir
         use_textline_orientation=False)
     
     print("Loading YOLO models")
-    yolo_models = {name: YOLO(os.path.join("models", name))
-                   for name in sorted(os.listdir("models")) if name.endswith(".pt")}
+    yolo_models = {name: YOLO(os.path.join(models_dir, name))
+                for name in find_model_files(models_dir)}
     print(f"Loaded {len(yolo_models)} models: {list(yolo_models)}")
     
     setup_s = time.perf_counter() - run_start    # TIMING: setup = everything since run_start
@@ -227,7 +227,7 @@ def drive_gopro(input_mp4, interval, datafile, ocr_candidate_signs = [], run_dir
 
         for model_name, yolo in yolo_models.items():
             t = time.perf_counter()    # TIMING
-            found = detect_and_store(framesrc, yolo, save_dir=detectionsFolder)
+            found = detect_and_store(framesrc, yolo, save_dir=detectionsFolder, imgsz=imgsz)
             detect_s += time.perf_counter() - t    # TIMING
             if datafile is not None:
                 for box_i, (sign, conf, shape) in enumerate(found):

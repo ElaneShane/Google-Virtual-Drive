@@ -18,5 +18,7 @@ if __name__ == "__main__":
     os.makedirs(run_dir, exist_ok=True)
 
     datafile = os.path.join(run_dir, "signs.csv")
-    drive.drive_gopro(clip, 12, datafile=datafile, ocr_candidate_signs=[], run_dir=run_dir)
+    models_dir = sys.argv[2] if len(sys.argv) > 2 else "models"
+    imgsz = int(sys.argv[3]) if len(sys.argv) > 3 else None
+    drive.drive_gopro(clip, 12, datafile=datafile, ocr_candidate_signs=[], run_dir=run_dir, models_dir=models_dir, imgsz=imgsz)
     print(f"Everything from this run is in: {run_dir}")
