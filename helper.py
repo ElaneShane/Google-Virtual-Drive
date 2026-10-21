@@ -61,16 +61,20 @@ def addToTable(filename, signName, location, url, heading, confidence):
             writer.writeheader()
             writer.writerow(item)
 
-# Column names match the "Sign" layer in ArcGIS (Citian Field Check Assets).
+# Column names match: "Citian Comparison Collection Form" table (GIS_Team_Citian_Field_Check)
 # x and y are the point's location. Everything else is a field in the layer.
 GIS_FIELDS = [
     "x", "y",
-    "Sign_Type", "Associated_Sign_Support", "SignLocation_signsupport",
-    "Mounted_Height", "MUTCD_Code", "Stock_Number", "Signface_Size",
-    "Sign_text", "Sign_Arrow", "Primary_Street", "Cross_Street",
-    "End_of_Block", "Side_of_Street", "Faces_Traffic",
-    "Direction_from_Cross_Street", "Distance_from_Cross_Street",
-    "Sign_Orientation", "Condition",
+    "asset_type",
+    "sign_type", "sign_type_code",
+    "associated_sign_support", "sign_location_in_a_sign_support",
+    "post_type_mounting", "mounting_surface",
+    "mutcd_code", "stock_number", "signface_size",
+    "sign_text", "sign_arrow", "sign_orientation",
+    "primary_street", "cross_street", "end_of_block",
+    "side_of_street", "faces_traffic",
+    "direction_from_cross_street", "distance_from_cross_street",
+    "asset_height", "asset_condition",
 ]
 
 
@@ -79,7 +83,7 @@ def addToGISFormatTable(filename, signName, lat, long, heading):
     item = {name: "" for name in GIS_FIELDS}   # start with every column blank
     item["x"] = long
     item["y"] = lat
-    item["Sign_Type"] = signName
+    item["sign_type"] = signName
 
     is_new_file = not os.path.exists(filename)
     with open(filename, "a", newline="") as f:

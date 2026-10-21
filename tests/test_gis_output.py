@@ -21,8 +21,8 @@ def test_located_sign_fills_only_known_columns(tmp_path):
     row = read_rows(out)[0]
     assert row["x"] == "-118.29"
     assert row["y"] == "34.19"
-    assert row["Sign_Type"] == "Stop Signs 1022"
-    assert row["Stock_Number"] == ""          # blank, not "n/a"
+    assert row["sign_type"] == "Stop Signs 1022"
+    assert row["stock_number"] == ""          # blank, not "n/a"
     assert "n/a" not in row.values()
 
 
@@ -31,7 +31,7 @@ def test_unlocated_sign_has_blank_x_and_y(tmp_path):
     addToGISFormatTable(str(out), "Yellow Arrow", None, None, None)
     row = read_rows(out)[0]
     assert row["x"] == "" and row["y"] == ""
-    assert row["Sign_Type"] == "Yellow Arrow"
+    assert row["sign_type"] == "Yellow Arrow"
 
 
 def test_second_call_appends_without_second_header(tmp_path):
