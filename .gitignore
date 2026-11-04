@@ -17,3 +17,4 @@ venv/
 run_gopro_tests.py 
 run_timing.log
 runs/
+data/
