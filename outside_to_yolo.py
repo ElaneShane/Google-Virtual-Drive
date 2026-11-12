@@ -144,9 +144,10 @@ ARTS_TO_OURS = {
 }
 
 
-def convert_arts_xml(xml_text, class_ids):
+def convert_arts_xml(xml_text, class_ids, code_map=None):
     """ARTS Pascal VOC XML text -> (our YOLO lines, set of codes we have no rule for).
     The caller drops the photo if the set is not empty."""
+    code_map = code_map or ARTS_TO_OURS
     root = ET.fromstring(xml_text)
     size = root.find("size")
     if size is None or size.find("width") is None or size.find("height") is None:
@@ -157,10 +158,10 @@ def convert_arts_xml(xml_text, class_ids):
     lines, unmapped = [], set()
     for obj in root.findall("object"):
         code = obj.find("name").text.strip()
-        if code not in ARTS_TO_OURS:
+        if code not in code_map:
             unmapped.add(code)
             continue
-        target = ARTS_TO_OURS[code]
+        target = code_map[code]
         if target not in class_ids:
             raise ValueError(f"our class list has no class named: {target}")
         b = obj.find("bndbox")
@@ -176,7 +177,7 @@ def convert_arts_xml(xml_text, class_ids):
 import collections
 
 
-def load_arts(root, class_ids):
+def load_arts(root, class_ids, code_map=None):
     """Walk ARTS Annotations/ and JPEGImages/. Returns (kept, report).
     A photo is kept only if EVERY box maps to one of our classes."""
     ann_dir = os.path.join(root, "Annotations")
@@ -192,7 +193,7 @@ def load_arts(root, class_ids):
         stem = os.path.splitext(f)[0]
         text = open(os.path.join(ann_dir, f), encoding="utf-8").read()
         try:
-            lines, unmapped = convert_arts_xml(text, class_ids)
+            lines, unmapped = convert_arts_xml(text, class_ids, code_map)
             fn = ET.fromstring(text).find("filename")
         except (ValueError, ET.ParseError):
             report["bad_xml"] += 1
@@ -238,6 +239,18 @@ def cap_photos(items, cap, base_counts=None, class_caps=None, seed=0):
             kept.append(it)
             totals.update(add)
     return kept, totals
+
+
+def make_alias_ids(new_names, rename):
+    """{name: class number in the NEW list}. Old names that were merged point at the merged class.
+    A dropped name is left out, so using it raises an error instead of being silently lost."""
+    ids = {n: i for i, n in enumerate(new_names)}
+    alias = dict(ids)
+    for old, new in rename.items():
+        if new not in ids:
+            raise ValueError(f"rename target is not in the new class list: {new}")
+        alias[old] = ids[new]
+    return alias
 
 
 import csv

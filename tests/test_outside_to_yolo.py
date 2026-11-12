@@ -312,3 +312,50 @@ def test_arts_challenging_codes_map():
     assert ARTS_TO_OURS["R10-11"] == "No Turn on Red"
     assert ARTS_TO_OURS["W17-1"] == "Speed humps -- W17-1"
     assert ARTS_TO_OURS["R7-2"] == "No Parking Signs Symbol"
+
+
+
+from outside_to_yolo import make_alias_ids
+
+
+def test_alias_points_merged_names_at_new_class():
+    alias = make_alias_ids(["Street Cleaning Symbol", "Stop"],
+                           {"NP MON": "Street Cleaning Symbol", "NP TUE": "Street Cleaning Symbol"})
+    assert alias["NP MON"] == alias["NP TUE"] == 0
+    assert alias["Stop"] == 1
+
+
+def test_alias_rejects_unknown_target():
+    with pytest.raises(ValueError):
+        make_alias_ids(["A"], {"x": "B"})
+
+
+def test_alias_leaves_dropped_names_out():
+    assert "dnsot_sign" not in make_alias_ids(["A"], {})
+
+
+def test_arts_code_map_override():
+    xml = arts_xml([("R4-7", 10, 10, 60, 60)])
+    lines, unmapped = convert_arts_xml(xml, {"R4-7 Keep Right Arrow": 9},
+                                       code_map={"R4-7": "R4-7 Keep Right Arrow"})
+    assert lines[0].split()[0] == "9"
+    assert unmapped == set()
+    lines, unmapped = convert_arts_xml(xml, {"R4-7 Keep Right Arrow": 9})
+    assert unmapped == {"R4-7"}
+
+
+from run_g_classes import build_new_names
+
+
+def test_merges_drops_and_appends():
+    old = ["A", "X1", "X2", "gone", "B"]
+    new = build_new_names(old, rename={"X1": "X", "X2": "X"}, dropped=["gone"], extra=["E"])
+    assert new == ["A", "B", "X", "E"]
+
+def test_merge_target_already_in_old_list_is_not_duplicated():
+    assert build_new_names(["A", "Y1", "Y"], {"Y1": "Y"}, [], []) == ["A", "Y"]
+
+
+def test_unknown_old_name_raises():
+    with pytest.raises(ValueError):
+        build_new_names(["A"], {"typo": "X"}, [], [])
