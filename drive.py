@@ -187,12 +187,7 @@ def drive_gopro(input_mp4, interval, datafile, ocr_candidate_signs = [], run_dir
     #load Depth Anything v2 Model
     print("Loading Depth and OCR Models")
     depthModel = pipeline(task="depth-estimation", model="depth-anything/Depth-Anything-V2-Metric-Outdoor-Small-hf")
-    #load paddleOCR model
-    ocrModel = PaddleOCR(
-        use_doc_orientation_classify=False,
-        use_doc_unwarping=False,
-        enable_mkldnn=False,
-        use_textline_orientation=False)
+    
     
     print("Loading YOLO models")
     yolo_models = {name: YOLO(os.path.join(models_dir, name))
@@ -227,7 +222,7 @@ def drive_gopro(input_mp4, interval, datafile, ocr_candidate_signs = [], run_dir
 
         for model_name, yolo in yolo_models.items():
             t = time.perf_counter()    # TIMING
-            found = detect_and_store(framesrc, yolo, save_dir=detectionsFolder, imgsz=imgsz)
+            found = detect_and_store(framesrc, yolo, save_dir=detectionsFolder, imgsz=imgsz, min_conf=0.25)
             detect_s += time.perf_counter() - t    # TIMING
             if datafile is not None:
                 for box_i, (sign, conf, shape) in enumerate(found):
@@ -247,17 +242,8 @@ def drive_gopro(input_mp4, interval, datafile, ocr_candidate_signs = [], run_dir
                     add_debug_row(debug_path, os.path.basename(framesrc), model_name,
                         sign, conf, shape, box_depth, newBearing, sign_lat, sign_lon)
                     
-                    if sign in ocrSigns:
-                        crop_name = f"{os.path.splitext(os.path.basename(framesrc))[0]}_{os.path.splitext(model_name)[0]}_box{box_i}.jpg"
-                        t = time.perf_counter()    # TIMING
-                        try:
-                            sign = ocr(shape, sign, framesrc,
-                                    os.path.join(croppedImageFolder, crop_name), ocrModel, ocr_candidate_signs)
-                        except Exception as e:
-                            print(f"OCR failed for {crop_name}, keeping detector label: {e}")
-                        ocr_s += time.perf_counter() - t    # TIMING
-                    print(f"The new sign after OCR is {sign}!")
-                    addToGISFormatTable(datafile, sign, sign_lat, sign_lon, newBearing)
+                    if conf >= 0.4:      # only confident boxes go in the official table
+                        addToGISFormatTable(datafile, sign, sign_lat, sign_lon, newBearing)
      
         total_s = time.perf_counter() - frame_start    # TIMING
         frame_log.append((total_s, detect_s, depth_s, ocr_s))    # TIMING

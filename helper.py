@@ -15,7 +15,7 @@ from geo import sign_bearing, adjustCoords, calculate_bearing, distance_m, headi
 from camera import hfov_for_clip, yaw_for_clip
 from gps_quality import check_hops, find_bad_points
 
-def detect_and_store(src, model, locationStr=None, save_dir=None, imgsz=None):
+def detect_and_store(src, model, locationStr=None, save_dir=None, imgsz=None, min_conf=0.4):
     if isinstance(model, str):          # legacy callers pass a path
         model = YOLO(model)
     predict_args = {"source": src, "conf": 0.25, "verbose": False}
@@ -28,14 +28,15 @@ def detect_and_store(src, model, locationStr=None, save_dir=None, imgsz=None):
     for box in result.boxes:
         signName = result.names[int(box.cls)]
         #path = os.path.join(os.getcwd(), f"images/{signName}_Low_Confidence")
-        if box.conf.item() >= 0.4: # lowered the confidence threashold
+        if box.conf.item() >= min_conf:
             #track all signs
             highConfSigns.append([signName, box.conf.item(), box.xyxy.tolist()[0]])
             #save one image per sign type
             if signName not in signTypes:
                 signTypes.append(signName)
                 base = save_dir if save_dir else os.path.join(os.getcwd(), "images")
-                path = os.path.join(base, f"{signName}_High_Confidence")
+                kind = "High" if box.conf.item() >= 0.4 else "Low"
+                path = os.path.join(base, f"{signName}_{kind}_Confidence")
                 os.makedirs(path, exist_ok = True)
                 outputPath = f"{path}/{os.path.basename(src)}"
                     #outputPath = f"{path}/{re.findall(r'streetview_frame_\d+_heading_\d+', src)[0]}.jpg"

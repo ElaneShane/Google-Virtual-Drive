@@ -20,5 +20,6 @@ if __name__ == "__main__":
     datafile = os.path.join(run_dir, "signs.csv")
     models_dir = sys.argv[2] if len(sys.argv) > 2 else "models"
     imgsz = int(sys.argv[3]) if len(sys.argv) > 3 else None
-    drive.drive_gopro(clip, 12, datafile=datafile, ocr_candidate_signs=[], run_dir=run_dir, models_dir=models_dir, imgsz=imgsz)
+    interval = float(sys.argv[4]) if len(sys.argv) > 4 else 2    # seconds between frames
+    drive.drive_gopro(clip, interval, datafile=datafile, ocr_candidate_signs=[], run_dir=run_dir, models_dir=models_dir, imgsz=imgsz)
     print(f"Everything from this run is in: {run_dir}")
