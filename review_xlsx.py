@@ -5,6 +5,51 @@ TIER_ORDER = {"likely": 0, "review": 1}
 COLUMNS = ["group_id", "tier", "label", "n_sightings", "best_conf", "lat", "lon",
            "picture", "reviewer_decision", "reviewer_label", "best_picture"]
 
+DECISIONS = ["correct", "wrong name", "not a sign", "can't tell"]
+EXTRA_LABELS = []          # for example ["not a road sign"] if you want it back
+OPTION_COLS = {"decision": 13, "label": 14}   # columns M and N hold the drop-down lists
+
+
+def load_class_names(xml_path):
+    """Read the class names from a Label Studio config file, in order."""
+    import xml.etree.ElementTree as ET
+    root = ET.parse(xml_path).getroot()
+    return [lab.get("value")
+            for group in root.iter("RectangleLabels")
+            for lab in group.findall("Label")]
+
+
+def add_dropdowns(ws, n_rows, decisions, labels):
+    """Write the option lists into columns M and N, then make columns I and J
+    drop-downs that only accept those options."""
+    from openpyxl.utils import get_column_letter
+    from openpyxl.worksheet.datavalidation import DataValidation
+
+    ws.cell(row=1, column=OPTION_COLS["decision"], value="decision_options")
+    ws.cell(row=1, column=OPTION_COLS["label"], value="label_options")
+    for i, v in enumerate(decisions, start=2):
+        ws.cell(row=i, column=OPTION_COLS["decision"], value=v)
+    for i, v in enumerate(labels, start=2):
+        ws.cell(row=i, column=OPTION_COLS["label"], value=v)
+    for key in OPTION_COLS:
+        ws.column_dimensions[get_column_letter(OPTION_COLS[key])].width = 34
+    if n_rows == 0:                      # no data rows, so nothing to attach a rule to
+        return
+
+    def attach(target_col, option_key, count):
+        src = get_column_letter(OPTION_COLS[option_key])
+        dv = DataValidation(type="list",
+                            formula1=f"${src}$2:${src}${count + 1}",   # no leading "="
+                            allow_blank=True,
+                            showErrorMessage=True,
+                            errorStyle="stop",
+                            errorTitle="Pick from the list",
+                            error="Please choose one of the options in the drop-down.")
+        dv.add(f"{target_col}2:{target_col}{n_rows + 1}")
+        ws.add_data_validation(dv)
+
+    attach("I", "decision", len(decisions))
+    attach("J", "label", len(labels))
 
 def sort_rows(rows):
     """Likely first, then review. Inside a tier, strongest first."""
@@ -22,7 +67,7 @@ def thumb_size(width, height, max_w=420, max_h=240):
     return max(1, round(width * scale)), max(1, round(height * scale))
 
 
-def build_workbook(rows, run_dir, make_thumb):
+def build_workbook(rows, run_dir, make_thumb, class_names):
     """make_thumb(path) -> path of a small picture, or None if the picture is missing."""
     from openpyxl import Workbook
     from openpyxl.drawing.image import Image as XLImage
@@ -53,4 +98,5 @@ def build_workbook(rows, run_dir, make_thumb):
             missing += 1
         ws.row_dimensions[i].height = 190
     ws.freeze_panes = "A2"
+    add_dropdowns(ws, len(rows), DECISIONS, class_names + EXTRA_LABELS)
     return wb, missing
