@@ -27,6 +27,9 @@ INSTRUCTIONS = [
     "",
     "Correct name: only fill this in when the decision is 'wrong name'.",
     "",
+    "Catalog match: sign number, description and size from the LA Standard Sign Catalog for the model's name. "
+    "Several candidates, or 'not in PDF catalog', means GIS picks the final number.",
+    "",
     "Map pin: opens Google Maps with a pin at the estimated sign position. The position is an estimate "
     "from GPS plus depth, so the pin may be off by several meters. 'needs location' means no trusted position.",
    ]
@@ -113,7 +116,27 @@ def add_instructions(wb):
     ws["A1"].font = ws["A1"].font.copy(bold=True, size=14)
 
 
-def build_workbook(rows, run_dir, make_thumb, class_names):
+def add_catalog_sheet(wb, catalog):
+    """Reference copy of the LA Standard Sign Catalog, filterable, so reviewers can look signs up."""
+    from openpyxl.styles import Font, PatternFill
+    ws = wb.create_sheet("Catalog")
+    cols = [("Sign number", "sign_number", 12), ("MUTCD", "mutcd_code", 14), ("SMS number", "sms_number", 16),
+            ("Description", "description", 55), ("Size", "size", 14), ("Material", "material", 10),
+            ("PDF page", "page", 9), ("Extraction flags", "flags", 40)]
+    ws.append([c[0] for c in cols])
+    for c in ws[1]:
+        c.font = Font(bold=True, color="FFFFFF")
+        c.fill = PatternFill("solid", fgColor="1F3864")
+    for letter, (_, _, w) in zip("ABCDEFGH", cols):
+        ws.column_dimensions[letter].width = w
+    for r in catalog:
+        ws.append([r[key] for _, key, _ in cols])
+    ws.freeze_panes = "A2"
+    ws.auto_filter.ref = f"A1:H{len(catalog) + 1}"
+
+
+def build_workbook(rows, run_dir, make_thumb, class_names, lookup=None, catalog=None):
+    from sign_lookup import catalog_text
     """make_thumb(path) -> path of a small picture, or None if the picture is missing."""
     from openpyxl import Workbook
     from openpyxl.drawing.image import Image as XLImage
@@ -153,6 +176,7 @@ def build_workbook(rows, run_dir, make_thumb, class_names):
         ws.cell(row=i, column=10, value=float(r["lon"]) if r["lon"] else None)
         ws.cell(row=i, column=11, value=int(r["group_id"]))
         ws.cell(row=i, column=12, value=r["best_picture"])
+        ws.cell(row=i, column=13, value=catalog_text((lookup or {}).get(r["label"])))
         thumb = make_thumb(os.path.join(run_dir, r["best_picture"]))
         if thumb:
             ws.add_image(XLImage(thumb), f"A{i}")
@@ -170,4 +194,6 @@ def build_workbook(rows, run_dir, make_thumb, class_names):
     ws.freeze_panes = "A2"
     add_dropdowns(wb, ws, len(rows), DECISIONS, class_names + EXTRA_LABELS)
     add_instructions(wb)
+    if catalog:
+           add_catalog_sheet(wb, catalog)
     return wb, missing
