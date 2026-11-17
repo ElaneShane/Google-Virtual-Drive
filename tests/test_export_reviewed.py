@@ -50,3 +50,9 @@ def test_candidates_pass_through_when_no_single_stock_number(tmp_path):
     rows = reviewed(tmp_path, [fake(1, "Stop Signs 1022")], [("correct", None)])
     good, _ = split_for_export(rows, LOOKUP, "r")
     assert good[0]["stock_number"] == "" and good[0]["candidates"].startswith("1010")
+
+def test_whole_numbers_from_sheets_downloads_lose_the_dot_zero():
+    row = {"Model's name": "Stop Ahead", "Decision": "correct", "Lat": 34.1, "Lon": -118.2,
+           "Group": 16.0, "Times seen": 2.0}
+    good, _ = split_for_export([row], LOOKUP, "r")
+    assert good[0]["group_id"] == 16 and good[0]["times_seen"] == 2

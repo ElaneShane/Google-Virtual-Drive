@@ -17,6 +17,9 @@ def _num(v):
     except (TypeError, ValueError):
         return None
 
+def _whole(v):
+    """2.0 -> 2. Google Sheets downloads store whole numbers as floats."""
+    return int(v) if isinstance(v, float) and v.is_integer() else v
 
 def read_reviewed(path):
     """Read the 'review' sheet by header names, so moving a column does not break this."""
@@ -58,7 +61,7 @@ def split_for_export(rows, lookup, source_run):
                "catalog_status": e.get("status", "name not in lookup" if name else ""),
                "candidates": e.get("candidates", ""),
                "confidence": r.get("Confidence", ""), "tier": _s(r.get("Tier")),
-               "times_seen": r.get("Times seen", ""), "group_id": r.get("Group", ""),
+              "times_seen": _whole(r.get("Times seen", "")), "group_id": _whole(r.get("Group", "")),
                "name_changed": "yes" if decision == "wrong name" else "",
                "source_run": source_run}
         if reason:

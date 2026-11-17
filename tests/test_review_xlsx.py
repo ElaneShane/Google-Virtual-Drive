@@ -85,3 +85,12 @@ def test_load_class_names_decodes_apostrophe_and_ignores_choices(tmp_path):
                    '</RectangleLabels><Choices name="c" toName="image">'
                    '<Choice value="clear"/></Choices></View>')
     assert load_class_names(str(xml)) == ["TANP 7' HIGH", "Stop"]
+
+def test_catalog_match_and_mutcd_columns_are_filled_from_the_lookup():
+    lookup = {"Stop Ahead": {"stock_number": "0161", "mutcd_code": "W3-1",
+                             "catalog_description": "Stop Ahead", "status": "matched in catalog"}}
+    rows = [{"group_id": "1", "tier": "likely", "label": "Stop Ahead", "n_sightings": "2",
+             "best_conf": "0.8", "lat": "", "lon": "", "best_picture": "x.jpg"}]
+    ws = build_workbook(rows, ".", lambda p: None, ["Stop Ahead"], lookup)[0]["review"]
+    assert ws["M1"].value == "Catalog match" and ws["N1"].value == "MUTCD code"
+    assert ws["M2"].value == "0161 Stop Ahead" and ws["N2"].value == "W3-1"

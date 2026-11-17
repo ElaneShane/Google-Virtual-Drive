@@ -5,12 +5,11 @@ TIER_ORDER = {"likely": 0, "review": 1}
 DECISIONS = ["correct", "wrong name", "not a sign", "can't tell"]
 EXTRA_LABELS = []
 HIDE_LISTS = True          # set to False if the drop-downs show up empty in Google Sheets
-
 HEADERS = ["Picture", "Tier", "Model's name", "Confidence", "Decision", "Correct name",
-           "Map pin", "Times seen", "Lat", "Lon", "Group", "Picture file"]
+           "Map pin", "Times seen", "Lat", "Lon", "Group", "Picture file",
+           "Catalog match", "MUTCD code"]
 WIDTHS = {"A": 62, "B": 10, "C": 30, "D": 12, "E": 16, "F": 30,
-          "G": 18, "H": 11, "I": 12, "J": 12, "K": 8, "L": 40}
-
+          "G": 18, "H": 11, "I": 12, "J": 12, "K": 8, "L": 40, "M": 46, "N": 14}
 INSTRUCTIONS = [
     "HOW TO REVIEW",
     "",
@@ -176,7 +175,9 @@ def build_workbook(rows, run_dir, make_thumb, class_names, lookup=None, catalog=
         ws.cell(row=i, column=10, value=float(r["lon"]) if r["lon"] else None)
         ws.cell(row=i, column=11, value=int(r["group_id"]))
         ws.cell(row=i, column=12, value=r["best_picture"])
-        ws.cell(row=i, column=13, value=catalog_text((lookup or {}).get(r["label"])))
+        entry = (lookup or {}).get(r["label"])
+        ws.cell(row=i, column=13, value=catalog_text(entry))
+        ws.cell(row=i, column=14, value=(entry or {}).get("mutcd_code", ""))
         thumb = make_thumb(os.path.join(run_dir, r["best_picture"]))
         if thumb:
             ws.add_image(XLImage(thumb), f"A{i}")
