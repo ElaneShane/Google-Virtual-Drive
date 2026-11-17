@@ -8,7 +8,10 @@ from google.maps import routing_v2
 import json
 from transformers import pipeline
 from helper import *
-from paddleocr import PaddleOCR
+try:
+    from paddleocr import PaddleOCR
+except ImportError:          # OCR packages are not needed for drive_gopro
+    PaddleOCR = None
 from geo import update_heading
 from ultralytics import YOLO
 ocrSigns = ["Tow Away Signs Letters", "Hourly Parking Sign"]
