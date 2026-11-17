@@ -2,13 +2,49 @@ import csv
 import os
 
 TIER_ORDER = {"likely": 0, "review": 1}
-COLUMNS = ["group_id", "tier", "label", "n_sightings", "best_conf", "lat", "lon",
-           "picture", "reviewer_decision", "reviewer_label", "best_picture"]
-
 DECISIONS = ["correct", "wrong name", "not a sign", "can't tell"]
-EXTRA_LABELS = []          # for example ["not a road sign"] if you want it back
-OPTION_COLS = {"decision": 13, "label": 14}   # columns M and N hold the drop-down lists
+EXTRA_LABELS = []
+HIDE_LISTS = True          # set to False if the drop-downs show up empty in Google Sheets
 
+HEADERS = ["Picture", "Tier", "Model's name", "Confidence", "Decision", "Correct name",
+           "Map pin", "Times seen", "Lat", "Lon", "Group", "Picture file"]
+WIDTHS = {"A": 62, "B": 10, "C": 30, "D": 12, "E": 16, "F": 30,
+          "G": 18, "H": 11, "I": 12, "J": 12, "K": 8, "L": 40}
+
+INSTRUCTIONS = [
+    "HOW TO REVIEW",
+    "",
+    "Each row is one sign the model thinks it found. The picture is the best frame, with the box drawn on it.",
+    "",
+    "Tier: 'likely' = seen in 2 or more frames and the model was at least 40% sure. 'review' = seen once, or less sure.",
+    "",
+    "Decision (pick from the drop-down):",
+    "  correct     - the model found a real sign and named it right",
+    "  wrong name  - a real sign, but the name is wrong. Pick the right one in 'Correct name'",
+    "  not a sign  - the box is on something that is not a road sign (glare, storefront, etc.)",
+    "  can't tell  - you cannot tell from the picture",
+    "  (blank)     - not reviewed yet",
+    "",
+    "Correct name: only fill this in when the decision is 'wrong name'.",
+    "",
+    "Map pin: opens Google Maps with a pin at the estimated sign position. The position is an estimate "
+    "from GPS plus depth, so the pin may be off by several meters. 'needs location' means no trusted position.",
+   ]
+
+
+def street_view_url(lat, lon):
+    """Link to Street View at a point, or None when there is no position."""
+    lat, lon = (lat or "").strip(), (lon or "").strip()
+    if not lat or not lon:
+        return None
+    return f"https://www.google.com/maps/@?api=1&map_action=pano&viewpoint={lat},{lon}"
+
+def map_pin_url(lat, lon):
+    """Link that drops a pin on Google Maps at a point, or None when there is no position."""
+    lat, lon = (lat or "").strip(), (lon or "").strip()
+    if not lat or not lon:
+        return None
+    return f"https://www.google.com/maps/search/?api=1&query={lat}%2C{lon}"
 
 def load_class_names(xml_path):
     """Read the class names from a Label Studio config file, in order."""
@@ -18,38 +54,6 @@ def load_class_names(xml_path):
             for group in root.iter("RectangleLabels")
             for lab in group.findall("Label")]
 
-
-def add_dropdowns(ws, n_rows, decisions, labels):
-    """Write the option lists into columns M and N, then make columns I and J
-    drop-downs that only accept those options."""
-    from openpyxl.utils import get_column_letter
-    from openpyxl.worksheet.datavalidation import DataValidation
-
-    ws.cell(row=1, column=OPTION_COLS["decision"], value="decision_options")
-    ws.cell(row=1, column=OPTION_COLS["label"], value="label_options")
-    for i, v in enumerate(decisions, start=2):
-        ws.cell(row=i, column=OPTION_COLS["decision"], value=v)
-    for i, v in enumerate(labels, start=2):
-        ws.cell(row=i, column=OPTION_COLS["label"], value=v)
-    for key in OPTION_COLS:
-        ws.column_dimensions[get_column_letter(OPTION_COLS[key])].width = 34
-    if n_rows == 0:                      # no data rows, so nothing to attach a rule to
-        return
-
-    def attach(target_col, option_key, count):
-        src = get_column_letter(OPTION_COLS[option_key])
-        dv = DataValidation(type="list",
-                            formula1=f"${src}$2:${src}${count + 1}",   # no leading "="
-                            allow_blank=True,
-                            showErrorMessage=True,
-                            errorStyle="stop",
-                            errorTitle="Pick from the list",
-                            error="Please choose one of the options in the drop-down.")
-        dv.add(f"{target_col}2:{target_col}{n_rows + 1}")
-        ws.add_data_validation(dv)
-
-    attach("I", "decision", len(decisions))
-    attach("J", "label", len(labels))
 
 def sort_rows(rows):
     """Likely first, then review. Inside a tier, strongest first."""
@@ -67,36 +71,103 @@ def thumb_size(width, height, max_w=420, max_h=240):
     return max(1, round(width * scale)), max(1, round(height * scale))
 
 
+def add_dropdowns(wb, ws, n_rows, decisions, labels):
+    """Put the option lists on a 'Lists' sheet, then make columns E and F drop-downs."""
+    from openpyxl.worksheet.datavalidation import DataValidation
+
+    lists = wb.create_sheet("Lists")
+    lists.cell(row=1, column=1, value="decisions")
+    lists.cell(row=1, column=2, value="class names")
+    for i, v in enumerate(decisions, start=2):
+        lists.cell(row=i, column=1, value=v)
+    for i, v in enumerate(labels, start=2):
+        lists.cell(row=i, column=2, value=v)
+    lists.column_dimensions["A"].width = 18
+    lists.column_dimensions["B"].width = 40
+    if HIDE_LISTS:
+        lists.sheet_state = "hidden"
+    if n_rows == 0:
+        return
+
+    def attach(target_col, src_col, count):
+        dv = DataValidation(type="list",
+                            formula1=f"Lists!${src_col}$2:${src_col}${count + 1}",   # no leading "="
+                            allow_blank=True,
+                            showErrorMessage=True,
+                            errorStyle="stop",
+                            errorTitle="Pick from the list",
+                            error="Please choose one of the options in the drop-down.")
+        dv.add(f"{target_col}2:{target_col}{n_rows + 1}")
+        ws.add_data_validation(dv)
+
+    attach("E", "A", len(decisions))
+    attach("F", "B", len(labels))
+
+
+def add_instructions(wb):
+    ws = wb.create_sheet("How to review")
+    ws.column_dimensions["A"].width = 110
+    for i, line in enumerate(INSTRUCTIONS, start=1):
+        c = ws.cell(row=i, column=1, value=line)
+        c.alignment = c.alignment.copy(wrap_text=True, vertical="top")
+    ws["A1"].font = ws["A1"].font.copy(bold=True, size=14)
+
+
 def build_workbook(rows, run_dir, make_thumb, class_names):
     """make_thumb(path) -> path of a small picture, or None if the picture is missing."""
     from openpyxl import Workbook
     from openpyxl.drawing.image import Image as XLImage
+    from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
 
     wb = Workbook()
     ws = wb.active
     ws.title = "review"
-    ws.append(COLUMNS)
-    widths = {"A": 9, "B": 9, "C": 32, "D": 11, "E": 10, "F": 12, "G": 12,
-              "H": 62, "I": 18, "J": 22, "K": 50}
-    for col, w in widths.items():
+    ws.append(HEADERS)
+    for col, w in WIDTHS.items():
         ws.column_dimensions[col].width = w
+
+    thin = Side(style="thin", color="BFBFBF")
+    border = Border(left=thin, right=thin, top=thin, bottom=thin)
+    center = Alignment(horizontal="center", vertical="center", wrap_text=True)
+    head_fill = PatternFill("solid", fgColor="1F3864")
+    tier_fill = {"likely": PatternFill("solid", fgColor="C6EFCE"),
+                 "review": PatternFill("solid", fgColor="FFEB9C")}
+
+    for c in ws[1]:
+        c.fill = head_fill
+        c.font = Font(bold=True, color="FFFFFF")
+        c.alignment = center
+        c.border = border
+    ws.row_dimensions[1].height = 28
+
     missing = 0
     for i, r in enumerate(sort_rows(rows), start=2):
-        ws.cell(row=i, column=1, value=int(r["group_id"]))
         ws.cell(row=i, column=2, value=r["tier"])
         ws.cell(row=i, column=3, value=r["label"])
-        ws.cell(row=i, column=4, value=int(r["n_sightings"]))
-        ws.cell(row=i, column=5, value=float(r["best_conf"]))
-        ws.cell(row=i, column=6, value=float(r["lat"]) if r["lat"] else None)
-        ws.cell(row=i, column=7, value=float(r["lon"]) if r["lon"] else None)
-        ws.cell(row=i, column=11, value=r["best_picture"])
+        ws.cell(row=i, column=4, value=float(r["best_conf"])).number_format = "0%"
+        url = map_pin_url(r["lat"], r["lon"])
+        ws.cell(row=i, column=7,
+                value=f'=HYPERLINK("{url}","Open map pin")' if url else "needs location")
+        ws.cell(row=i, column=8, value=int(r["n_sightings"]))
+        ws.cell(row=i, column=9, value=float(r["lat"]) if r["lat"] else None)
+        ws.cell(row=i, column=10, value=float(r["lon"]) if r["lon"] else None)
+        ws.cell(row=i, column=11, value=int(r["group_id"]))
+        ws.cell(row=i, column=12, value=r["best_picture"])
         thumb = make_thumb(os.path.join(run_dir, r["best_picture"]))
         if thumb:
-            ws.add_image(XLImage(thumb), f"H{i}")
+            ws.add_image(XLImage(thumb), f"A{i}")
         else:
-            ws.cell(row=i, column=8, value="(picture missing)")
+            ws.cell(row=i, column=1, value="(picture missing)")
             missing += 1
         ws.row_dimensions[i].height = 190
+        for col in range(1, len(HEADERS) + 1):
+            cell = ws.cell(row=i, column=col)
+            cell.alignment = center
+            cell.border = border
+        if r["tier"] in tier_fill:
+            ws.cell(row=i, column=2).fill = tier_fill[r["tier"]]
+
     ws.freeze_panes = "A2"
-    add_dropdowns(ws, len(rows), DECISIONS, class_names + EXTRA_LABELS)
+    add_dropdowns(wb, ws, len(rows), DECISIONS, class_names + EXTRA_LABELS)
+    add_instructions(wb)
     return wb, missing
