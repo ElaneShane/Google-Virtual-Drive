@@ -1,15 +1,47 @@
 import csv
 import os
+from urllib.parse import urlencode
 
 TIER_ORDER = {"likely": 0, "review": 1}
 DECISIONS = ["correct", "wrong name", "not a sign", "can't tell"]
 EXTRA_LABELS = []
 HIDE_LISTS = True          # set to False if the drop-downs show up empty in Google Sheets
-HEADERS = ["Picture", "Tier", "Model's name", "Confidence", "Decision", "Correct name",
-           "Map pin", "Times seen", "Lat", "Lon", "Group", "Picture file",
-           "Catalog match", "MUTCD code"]
-WIDTHS = {"A": 62, "B": 10, "C": 30, "D": 12, "E": 16, "F": 30,
-          "G": 18, "H": 11, "I": 12, "J": 12, "K": 8, "L": 40, "M": 46, "N": 14}
+HEADERS = [
+    "Picture",
+    "Tier",
+    "Model's name",
+    "Confidence",
+    "Decision",
+    "Correct name",
+    "Map pin",
+    "Apple Maps",
+    "Times seen",
+    "Lat",
+    "Lon",
+    "Group",
+    "Picture file",
+    "Catalog match",
+    "MUTCD code",
+]
+
+WIDTHS = {
+    "A": 90,
+    "B": 10,
+    "C": 30,
+    "D": 12,
+    "E": 16,
+    "F": 30,
+    "G": 18,
+    "H": 22,
+    "I": 12,
+    "J": 12,
+    "K": 12,
+    "L": 8,
+    "M": 40,
+    "N": 46,
+    "O": 14,
+}
+
 INSTRUCTIONS = [
     "HOW TO REVIEW",
     "",
@@ -41,6 +73,21 @@ def street_view_url(lat, lon):
         return None
     return f"https://www.google.com/maps/@?api=1&map_action=pano&viewpoint={lat},{lon}"
 
+def apple_maps_url(lat, lon, name="LADOT sign"):
+    if lat is None or lon is None:
+        return ""
+    try:
+        lat = float(lat)
+        lon = float(lon)
+    except (TypeError, ValueError):
+        return ""
+
+    params = {
+        "coordinate": f"{lat:.6f},{lon:.6f}",
+        "name": name,
+    }
+    return "https://maps.apple.com/place?" + urlencode(params) 
+
 def map_pin_url(lat, lon):
     """Link that drops a pin on Google Maps at a point, or None when there is no position."""
     lat, lon = (lat or "").strip(), (lon or "").strip()
@@ -67,7 +114,7 @@ def read_review(csv_path):
         return list(csv.DictReader(f))
 
 
-def thumb_size(width, height, max_w=420, max_h=240):
+def thumb_size(width, height, max_w=600, max_h=400):
     """Size that fits inside max_w x max_h and keeps the shape. Never enlarges."""
     scale = min(max_w / width, max_h / height, 1.0)
     return max(1, round(width * scale)), max(1, round(height * scale))
@@ -167,24 +214,42 @@ def build_workbook(rows, run_dir, make_thumb, class_names, lookup=None, catalog=
         ws.cell(row=i, column=2, value=r["tier"])
         ws.cell(row=i, column=3, value=r["label"])
         ws.cell(row=i, column=4, value=float(r["best_conf"])).number_format = "0%"
-        url = map_pin_url(r["lat"], r["lon"])
-        ws.cell(row=i, column=7,
-                value=f'=HYPERLINK("{url}","Open map pin")' if url else "needs location")
-        ws.cell(row=i, column=8, value=int(r["n_sightings"]))
-        ws.cell(row=i, column=9, value=float(r["lat"]) if r["lat"] else None)
-        ws.cell(row=i, column=10, value=float(r["lon"]) if r["lon"] else None)
-        ws.cell(row=i, column=11, value=int(r["group_id"]))
-        ws.cell(row=i, column=12, value=r["best_picture"])
+        google_url = map_pin_url(r["lat"], r["lon"])
+        ws.cell(
+            row=i,
+            column=7,
+            value=f'=HYPERLINK("{google_url}","Open map pin")'
+            if google_url else "needs location"
+        )
+
+        apple_url = apple_maps_url(r["lat"], r["lon"], r["label"])
+        if apple_url:
+            cell = ws.cell(row=i, column=8, value="Open in Apple Maps")
+            cell.hyperlink = apple_url
+            cell.style = "Hyperlink"
+        else:
+            ws.cell(row=i, column=8, value="needs location")
+
+        ws.cell(row=i, column=9, value=int(r["n_sightings"]))
+        ws.cell(row=i, column=10, value=float(r["lat"]) if r["lat"] else None)
+        ws.cell(row=i, column=11, value=float(r["lon"]) if r["lon"] else None)
+        ws.cell(row=i, column=12, value=int(r["group_id"]))
+        ws.cell(row=i, column=13, value=r["best_picture"])
+
         entry = (lookup or {}).get(r["label"])
-        ws.cell(row=i, column=13, value=catalog_text(entry))
-        ws.cell(row=i, column=14, value=(entry or {}).get("mutcd_code", ""))
+        ws.cell(row=i, column=14, value=catalog_text(entry))
+        ws.cell(row=i, column=15, value=(entry or {}).get("mutcd_code", ""))
         thumb = make_thumb(os.path.join(run_dir, r["best_picture"]))
         if thumb:
             ws.add_image(XLImage(thumb), f"A{i}")
         else:
-            ws.cell(row=i, column=1, value="(picture missing)")
+            ws.cell(
+                row=i,
+                column=1,
+                value=f"(picture missing)\nExpected: {r['best_picture']}"
+            )
             missing += 1
-        ws.row_dimensions[i].height = 190
+        ws.row_dimensions[i].height = 300
         for col in range(1, len(HEADERS) + 1):
             cell = ws.cell(row=i, column=col)
             cell.alignment = center

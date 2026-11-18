@@ -5,9 +5,27 @@ import re
 ALIASES = {"Stop Ahead": "STOP AHEAD SYMBOL W3-1",
            "R4-7 Keep Right Arrow": "r4-7(island nose-right)"}
 
-# Names we do not trust yet. Remove from here once checked.
-HOLD = {"Hourly Parking Signs": "held: class map says 1 stock number, but the singular row has 105 versions",
-        "No Left Turn": "held: class map row is only 'proposed - check an image'"}
+HOLD = {
+    "Hourly Parking Signs": "held: class map says 1 stock number, but the singular row has 105 versions"
+}
+
+# Selected stock numbers for classes with multiple versions.
+# These are assumptions for review, not confirmed matches.
+OVERRIDES = {
+    "Pedestrian Traffic, (Symbol) 572": (
+        "0572", "assumed from class name; 0560, 0561, 0570 also exist"
+    ),
+    "R3-18_No_U_Turn_or_Left_Turn": (
+        "1463", "single catalog row"
+    ),
+    "No Left Turn": (
+        "1397", "plain version assumed; timed versions exist (e.g. 1404)"
+    ),
+    "No Right Turn": (
+        "1381", "plain version assumed"
+    ),
+}
+
 
 LOOKUP_FIELDS = ["ladot_name", "stock_number", "mutcd_code", "catalog_description", "status", "candidates", "note"]
 
@@ -33,13 +51,13 @@ def load_catalog(path):
         if not clean(d.get("Sign Number")):
             continue
         out.append({"sign_number": norm_number(d["Sign Number"]),
-                    "mutcd_code": clean(d.get("MUTCD Code")),
-                    "sms_number": clean(d.get("SMS Number")),
+                    "mutcd_code": clean(d.get("MUTCD Code", "MUTCD")),
+                    "sms_number": clean(d.get("SMS Number", "SMS number")),
                     "description": clean(d.get("Description")),
                     "size": clean(d.get("Size")),
                     "material": clean(d.get("Material")),
-                    "page": clean(d.get("Source Page")),
-                    "flags": clean(d.get("Review Flags"))})
+                    "page": clean(d.get("Source Page", "PDF page")),
+                    "flags": clean(d.get("Review Flags", "Extraction flags"))})
     return out
 
 
@@ -101,6 +119,18 @@ def build_lookup(map_rows, class_names, index):
                 e["status"] = f"{n} candidates"
             else:
                 e["status"] = f"{n} versions (too many to list)"
+        if name in OVERRIDES:
+            raw_number, note = OVERRIDES[name]
+            number = norm_number(raw_number)
+            hit = index.get(number)
+
+            e["stock_number"] = number
+            e["mutcd_code"] = hit[0]["mutcd_code"] if hit else ""
+            e["catalog_description"] = hit[0]["description"] if hit else ""
+            e["candidates"] = ""
+            e["status"] = "assumed - review"
+            e["note"] = note
+        
         out.append(e)
     return out
 
@@ -123,6 +153,14 @@ def catalog_text(entry):
     if not entry:
         return ""
     if entry.get("stock_number"):
-        text = clean(f"{entry['stock_number']} {entry.get('catalog_description', '')}")
-        return text if entry.get("status") == "matched in catalog" else f"{text} (not in PDF catalog)"
+        text = clean(
+            f"{entry['stock_number']} {entry.get('catalog_description', '')}"
+        )
+        if entry.get("status") == "matched in catalog":
+            return text
+
+        if entry.get("status") == "assumed - review":
+            return f"{text} (assumed - review)"
+        return f"{text} (not in PDF catalog)"
+    
     return entry.get("candidates") or entry.get("status", "")
