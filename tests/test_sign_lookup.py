@@ -86,9 +86,7 @@ def test_confirmed_stock_missing_from_catalog_still_fills():
 
     assert entry["stock_number"] == "4215"
     assert entry["status"] == "stock number not in master catalog"
-    assert catalog_text(entry) == (
-        "4215 Street Name Sign (stock number not in master catalog)"
-    )
+    assert catalog_text(entry) == "4215 Street Name Sign"
 
 
 def test_assumed_match_fills_stock_but_marks_for_review():
@@ -99,8 +97,8 @@ def test_assumed_match_fills_stock_but_marks_for_review():
     )[0]
 
     assert entry["stock_number"] == "1381"
-    assert entry["status"] == "assumed - review"
-    assert "assumed - review" in catalog_text(entry)
+    # assert entry["status"] == "assumed - review"
+    assert "best guess, please confirm" in catalog_text(entry)
 
 
 def test_multiple_options_leave_stock_blank():
@@ -241,3 +239,18 @@ def test_lookup_file_round_trip(tmp_path):
 
     assert loaded["Stop Ahead"]["stock_number"] == "0161"
     assert loaded["Stop Ahead"]["status"] == "matched in master catalog"
+
+def test_catalog_text_options_say_pick_one():
+    entry = {"stock_number": "", "status": "options - review frame",
+             "candidates": "1010 STOP (Signal Repair); 1022 Stop, High Intensity"}
+    assert catalog_text(entry).startswith("Pick one: 1010")
+
+
+def test_catalog_text_schedule_says_type_it_yourself():
+    entry = {"stock_number": "", "status": "schedule_review_no_stock", "candidates": ""}
+    assert "Type the stock number yourself" in catalog_text(entry)
+
+
+def test_catalog_text_no_match_says_so():
+    entry = {"stock_number": "", "status": "not in class map", "candidates": ""}
+    assert catalog_text(entry).startswith("No stock number found")

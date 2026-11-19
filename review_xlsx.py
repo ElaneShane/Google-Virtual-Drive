@@ -67,9 +67,8 @@ INSTRUCTIONS = [
     "Several candidates, or 'not in PDF catalog', means GIS picks the final number.",
     "",
     "Map pin: opens Google Maps with a pin at the estimated sign position. The position is an estimate "
-    "from GPS plus depth, so the pin may be off by several meters. 'needs location' means no trusted position.",
-    "The close-up is the sign cut from the original frame, and the side and facing are guess from the model, please confrim or fix."
-   ]
+        "Sign close-up: the sign cut out of the original frame, so it is easier to see. "
+    "Side of street and Sign faces are the model's guess, so please confirm or fix them.",]
 
 
 def street_view_url(lat, lon):
@@ -80,19 +79,12 @@ def street_view_url(lat, lon):
     return f"https://www.google.com/maps/@?api=1&map_action=pano&viewpoint={lat},{lon}"
 
 def apple_maps_url(lat, lon, name="LADOT sign"):
-    if lat is None or lon is None:
-        return ""
     try:
         lat = float(lat)
         lon = float(lon)
     except (TypeError, ValueError):
         return ""
-
-    params = {
-        "coordinate": f"{lat:.6f},{lon:.6f}",
-        "name": name,
-    }
-    return "https://maps.apple.com/place?" + urlencode(params) 
+    return f"https://maps.apple.com/place?coordinate={lat:.6f},{lon:.6f}"
 
 def map_pin_url(lat, lon):
     """Link that drops a pin on Google Maps at a point, or None when there is no position."""
@@ -200,6 +192,7 @@ def build_workbook(rows, run_dir, make_thumb, class_names, lookup=None, catalog=
     for col, w in WIDTHS.items():
         ws.column_dimensions[col].width = w
 
+    ws.column_dimensions["I"].hidden = True
     thin = Side(style="thin", color="BFBFBF")
     border = Border(left=thin, right=thin, top=thin, bottom=thin)
     center = Alignment(horizontal="center", vertical="center", wrap_text=True)

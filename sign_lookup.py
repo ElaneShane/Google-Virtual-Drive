@@ -253,25 +253,30 @@ def read_lookup(path):
 
 
 def catalog_text(entry):
-    """Short text for the Catalog match column in review.xlsx."""
+    """Plain-English text for the Catalog match column in review.xlsx."""
     if not entry:
         return ""
 
-    if entry.get("stock_number"):
-        text = clean(
-            f"{entry['stock_number']} "
-            f"{entry.get('catalog_description', '')}"
-        )
+    stock = (entry.get("stock_number") or "").strip()
+    description = clean(entry.get("catalog_description", "") or "")
+    status = (entry.get("status") or "").lower()
+    candidates = (entry.get("candidates") or "").strip()
 
-        if entry.get("status") == "assumed - review":
-            return f"{text} (assumed - review)"
+    # One stock number picked for this sign
+    if stock:
+        text = clean(f"{stock} {description}")
+        if "assumed" in status:
+            return f"{text} (best guess, please confirm)"
+        return text
 
-        if entry.get("status") == "matched in master catalog":
-            return text
+    # Several possible numbers: the reviewer chooses by looking at the sign
+    if candidates:
+        candidates = candidates.replace(" (not in master catalog)", "")
+        return f"Pick one: {candidates}"
 
-        return f"{text} ({entry.get('status', '')})"
+    # No number, because it depends on text printed on the sign
+    if "schedule" in status or "text" in status:
+        return "Type the stock number yourself (it depends on the text on the sign)"
 
-    return (
-        entry.get("candidates")
-        or entry.get("status", "")
-    )
+    # Nothing in the catalog for this sign type
+    return "No stock number found. Type it in if you know it."
