@@ -6,6 +6,7 @@ from review_xlsx import read_review, build_workbook, thumb_size, load_class_name
 from sign_lookup import load_catalog, read_lookup
 from sign_context import sign_context_for_row
 from master_catalog import load_master_catalog
+from sign_lookup import read_lookup
 
 run_dir = os.path.expanduser(sys.argv[1])
 tmp = tempfile.mkdtemp()
