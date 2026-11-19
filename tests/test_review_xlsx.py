@@ -112,7 +112,7 @@ def test_catalog_match_and_mutcd_columns_are_filled_from_the_lookup():
             "stock_number": "0161",
             "mutcd_code": "W3-1",
             "catalog_description": "Stop Ahead",
-            "status": "matched in catalog"
+            "status": "matched in master catalog"
         }
     }
 

@@ -371,11 +371,11 @@ def GoProFrames(input_mp4, outdir, interval):
 
 
 # debug logs
-def add_debug_row(filename, frame, model_file, label, conf, box, depth_m, bearing, sign_lat, sign_lon):
+def add_debug_row(filename, frame, model_file, label, conf, box, depth_m, bearing, sign_lat, sign_lon, heading=None):
     """TEMPORARY: logs one detection with everything needed to judge it later."""
     fields = ["frame", "model_file", "label", "confidence",
               "x1", "y1", "x2", "y2", "depth_m", "bearing",
-              "sign_lat", "sign_lon", "correct"]
+              "sign_lat", "sign_lon", "cam_heading", "correct"]
     row = {
         "frame": frame, "model_file": model_file, "label": label,
         "confidence": round(conf, 3),
@@ -383,6 +383,7 @@ def add_debug_row(filename, frame, model_file, label, conf, box, depth_m, bearin
         "depth_m": "" if depth_m is None else round(depth_m, 2),
         "bearing": "" if bearing is None else round(bearing, 1),
         "sign_lat": sign_lat, "sign_lon": sign_lon,
+        "cam_heading": "" if heading is None else round(heading, 1),
         "correct": "",
     }
     new_file = not os.path.exists(filename)

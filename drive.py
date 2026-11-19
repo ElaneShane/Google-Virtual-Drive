@@ -243,8 +243,8 @@ def drive_gopro(input_mp4, interval, datafile, ocr_candidate_signs = [], run_dir
                         print(f"Adding {sign} with UNKNOWN location to {datafile} table!")
                     #debug: check the label before we pass off to OCR
                     add_debug_row(debug_path, os.path.basename(framesrc), model_name,
-                        sign, conf, shape, box_depth, newBearing, sign_lat, sign_lon)
-                    
+                        sign, conf, shape, box_depth, newBearing, sign_lat, sign_lon,
+                        heading=heading if located else None)
                     if conf >= 0.4:      # only confident boxes go in the official table
                         addToGISFormatTable(datafile, sign, sign_lat, sign_lon, newBearing)
      

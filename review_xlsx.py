@@ -22,6 +22,10 @@ HEADERS = [
     "Picture file",
     "Catalog match",
     "MUTCD code",
+    "Sign close-up",
+    "Side of street (suggested)",
+    "Sign faces (suggested)",
+    "Direction note"
 ]
 
 WIDTHS = {
@@ -40,6 +44,7 @@ WIDTHS = {
     "M": 40,
     "N": 46,
     "O": 14,
+    "P": 85, "Q": 22, "R": 22, "S": 28
 }
 
 INSTRUCTIONS = [
@@ -63,6 +68,7 @@ INSTRUCTIONS = [
     "",
     "Map pin: opens Google Maps with a pin at the estimated sign position. The position is an estimate "
     "from GPS plus depth, so the pin may be off by several meters. 'needs location' means no trusted position.",
+    "The close-up is the sign cut from the original frame, and the side and facing are guess from the model, please confrim or fix."
    ]
 
 
@@ -180,8 +186,7 @@ def add_catalog_sheet(wb, catalog):
     ws.freeze_panes = "A2"
     ws.auto_filter.ref = f"A1:H{len(catalog) + 1}"
 
-
-def build_workbook(rows, run_dir, make_thumb, class_names, lookup=None, catalog=None):
+def build_workbook(rows, run_dir, make_thumb, class_names, lookup=None, catalog=None, context=None):
     from sign_lookup import catalog_text
     """make_thumb(path) -> path of a small picture, or None if the picture is missing."""
     from openpyxl import Workbook
@@ -249,6 +254,12 @@ def build_workbook(rows, run_dir, make_thumb, class_names, lookup=None, catalog=
                 value=f"(picture missing)\nExpected: {r['best_picture']}"
             )
             missing += 1
+        ctx = (context or {}).get(r["group_id"], {})
+        ws.cell(row=i, column=17, value=ctx.get("side", ""))
+        ws.cell(row=i, column=18, value=ctx.get("faces", ""))
+        ws.cell(row=i, column=19, value=ctx.get("note", ""))
+        if ctx.get("crop"):
+            ws.add_image(XLImage(ctx["crop"]), f"P{i}")
         ws.row_dimensions[i].height = 300
         for col in range(1, len(HEADERS) + 1):
             cell = ws.cell(row=i, column=col)

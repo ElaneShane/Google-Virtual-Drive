@@ -46,6 +46,7 @@ def read_sightings(csv_path):
                 "lon": _float_or_none(row["sign_lon"]),
                 "box": (float(row["x1"]), float(row["y1"]),
                         float(row["x2"]), float(row["y2"])),
+                "heading": _float_or_none(row.get("cam_heading")),
             })
     return out
 
@@ -170,11 +171,14 @@ def summarize(group, group_id):
         "depth_m": anchor["depth"] if anchor else "",
         "reviewer_decision": "",
         "reviewer_label": "",
+        "x1": (best_conf.get("box") or ("",)*4)[0], "y1": (best_conf.get("box") or ("",)*4)[1],
+        "x2": (best_conf.get("box") or ("",)*4)[2], "y2": (best_conf.get("box") or ("",)*4)[3],
+        "cam_heading": "" if best_conf.get("heading") is None else best_conf["heading"],
     }
 
 
 REVIEW_FIELDS = ["group_id", "tier", "label", "n_sightings", "best_conf", "best_frame", "best_picture",
-                 "first_frame", "last_frame", "lat", "lon", "depth_m",
+                 "first_frame", "last_frame", "lat", "lon", "depth_m", "x1", "y1", "x2", "y2", "cam_heading",
                  "reviewer_decision", "reviewer_label"]
 
 
